@@ -1,0 +1,11 @@
+# Local secrets and environment files
+.env
+.env.*
+!.env.example
+
+# Vercel local metadata
+.vercel
+
+# OS and editor files
+.DS_Store
+*.log

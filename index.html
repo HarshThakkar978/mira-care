@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#f7f7f3">
+<title>Mira Care — Your visit companion</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">m</div><div><div class="brand-name">mira care</div><span class="brand-sub">your visit companion</span></div></div>
+    <nav aria-label="Main navigation"><div class="nav-label">Your space</div><div class="nav-list">
+      <button class="nav-item active" data-route="checkin"><span class="nav-icon">✳</span><span class="nav-text">Check-in</span></button>
+      <button class="nav-item" data-route="home"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></button>
+      <button class="nav-item" data-route="tracker"><span class="nav-icon">◌</span><span class="nav-text">Cycle</span></button>
+      <button class="nav-item" data-route="prep"><span class="nav-icon">✎</span><span class="nav-text">Visit prep</span></button>
+      <button class="nav-item" data-route="agenda"><span class="nav-icon">▤</span><span class="nav-text">Agenda</span></button>
+      <button class="nav-item" data-route="after"><span class="nav-icon">↗</span><span class="nav-text">After visit</span></button>
+    </div></nav>
+    <div class="side-bottom"><div class="local-card"><div class="local-title"><span id="aiDot" class="status-dot"></span><span id="aiStatus">AI drafting is off</span></div><div class="local-copy" id="aiStatusCopy">Your notes stay in this browser. This preview does not send them to an AI service.</div></div><div class="privacy-small">Saved on this device only. No account, shared database, or AI connection is active.</div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div class="crumb" id="breadcrumb">Your space / Overview</div><div class="top-actions"><span class="save-state" id="saveState">Saved on this device</span><button class="icon-button" data-action="export">Export my data</button><button class="icon-button" data-action="privacy">Privacy</button></div></header>
+    <div class="content" id="view"></div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<div id="modalRoot"></div>
+<script src="app.js"></script>
+</body>
+</html>
