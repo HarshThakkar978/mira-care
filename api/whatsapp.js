@@ -48,7 +48,7 @@ async function processMessage(m) {
     return;
   }
   await markReadAndTyping(m.id);
-  await sendText(phone, await miraReply(phone, m.text.body));
+  await sendText(phone, (await miraReply(phone, m.text.body)).reply);
 }
 
 async function graph(payload) {

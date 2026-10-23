@@ -1,15 +1,14 @@
 # Mira Care
 
-A mobile-first, customer-only website for cycle and symptom notes and visit preparation. The first screen is a guided daily check-in that feels like a short text conversation. A dashboard and the original cycle, symptom, appointment-prep, agenda, and after-visit views remain available.
+A perimenopause companion you text. Open the app (or add it to your iPhone Home Screen) and it goes straight to an iMessage-style chat with Mira, who uses Claude to log how you feel, period starts and symptoms from plain messages. The other tabs show what you've logged:
 
-## What works
+- **Chat**: talk to Mira; quick replies for common check-ins
+- **Today**: days since your last period, average gap between periods, next appointment, a 30-day symptom strip and your most frequent symptoms
+- **Cycle**: month calendar of period starts and symptoms; tap a day to view, add or remove entries
+- **Visits**: notes to bring up, an editable agenda Mira drafts from your data, after-visit notes and a follow-up list
+- **Me**: your name, add-to-Home-Screen help, a private link to open Mira on another device, export and erase
 
-- Guided check-in with quick replies, optional free-text answers, skip paths, a date picker, and symptom intensity/context
-- Save a period start and symptom records from the conversation into the same history used by the dashboard and tracker
-- Review cycle history, symptoms, visit details, prep notes, editable agenda items, and after-visit notes
-- Export a local JSON copy, print the agenda, or clear browser data from Privacy
-- Responsive website navigation with a mobile bottom bar and large touch targets
-- Gemini and all network AI calls are disabled; the guided conversation is a deterministic local form
+Data lives in Upstash Redis, keyed by a random device id stored in the browser (`/api/app`). Entries saved by the older browser-only version are imported automatically the first time the app loads.
 
 ## Mira on WhatsApp
 
@@ -26,29 +25,8 @@ Settings are listed in [`.env.example`](.env.example). Text **DELETE ALL** to Mi
 
 ## Run locally
 
-From the project folder:
-
-```sh
-python3 -m http.server 8000
-```
-
-Open `http://localhost:8000`. The app stores entries in browser local storage under `mira-care-local-v2`. Each browser profile and deployed site origin has separate data. The existing storage key keeps prior Mira Care entries intact. There is no login, cloud database, cross-device sync, or backup.
+The app needs the `/api` functions, so run it with the Vercel CLI (`vercel dev`) after linking the project and pulling its environment variables.
 
 ## Deploy to Vercel
 
-1. Import this GitHub repository into Vercel.
-2. Choose **Other** for the framework preset if asked.
-3. Use the repository root. Leave build and install commands blank; use `.` as the output directory if prompted.
-4. Deploy a **Preview** for evaluation.
-
-This is a static site with no build step, server function, database, or account system. Health notes remain in each visitor’s browser and do not reach the server.
-
-## Gemini placeholder
-
-[`.env.example`](.env.example) contains a blank `GEMINI_API_KEY=` marker only. Do not paste a real key into this file, `index.html`, or any committed client-side source. If a compliant server-side integration is approved in a future version, set the secret in **Vercel → Project → Settings → Environment Variables** using the exact name `GEMINI_API_KEY`. This version does not read that variable, and adding it in Vercel will not enable AI. All AI drafting controls remain off; the daily chat is a scripted form and does not transmit or interpret health information.
-
-Before adding any AI service, review the provider’s current terms and confirm that the intended consumer health-notes use is permitted. This prototype is not a clinical service and does not provide medical advice.
-
-## Data and privacy limits
-
-Entries are stored only in the current browser profile on the current device. Anyone with access to that profile may be able to see them. There is no sign-in, database, synchronization, or server-side backup. Use fictional information for demonstrations. Mira Care organizes personal notes; confirm health questions and next steps directly with a qualified clinician.
+Pushing to `main` deploys automatically. The project needs an Upstash Redis store connected (Vercel → Storage) and the environment variables listed in [`.env.example`](.env.example). Mira Care organizes personal notes and does not give medical advice.

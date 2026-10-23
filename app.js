@@ -1,134 +1,430 @@
 (() => {
-  const STORAGE_KEY = 'mira-care-local-v2';
-  const today = () => { const d=new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; };
-  const fresh = () => ({ profile:{name:'',appointmentDate:'',clinician:''}, cycleStarts:[], symptoms:[], checkins:[], checkinDraft:null, preNotes:[], postNotes:[], agenda:{summary:'',topics:[],questions:[]}, followup:{summary:'',steps:[],questions:[]} });
-  let state;
-  try { state = {...fresh(), ...JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}')}; } catch { state = fresh(); }
-  state.profile = {...fresh().profile, ...(state.profile||{})}; state.agenda = {...fresh().agenda, ...(state.agenda||{})}; state.followup = {...fresh().followup, ...(state.followup||{})}; state.followup.steps = Array.isArray(state.followup.steps)?state.followup.steps:[]; state.followup.questions = Array.isArray(state.followup.questions)?state.followup.questions:[]; state.checkins=Array.isArray(state.checkins)?state.checkins:[];
-  let route = 'checkin';
+  // ---------- Storage & identity ----------
+  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip';
+  const store = {
+    get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+    set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+    del(k) { try { localStorage.removeItem(k); } catch {} }
+  };
+  const newId = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+  const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
+
+  // "?device=<id>" opens the same Mira on another phone or computer.
+  const linked = new URLSearchParams(location.search).get('device');
+  if (linked && ID_RE.test(linked)) { store.set(ID_KEY, linked); store.del(CACHE_KEY); history.replaceState(null, '', location.pathname + location.hash); }
+  let deviceId = store.get(ID_KEY);
+  if (!deviceId || !ID_RE.test(deviceId)) { deviceId = newId(); store.set(ID_KEY, deviceId); }
+
+  const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, transcript: [] });
+  let user = (() => { try { return { ...emptyUser(), ...JSON.parse(store.get(CACHE_KEY) || '{}') }; } catch { return emptyUser(); } })();
+  const saveCache = () => store.set(CACHE_KEY, JSON.stringify(user));
+
+  // ---------- Helpers ----------
+  const $ = (s, root = document) => root.querySelector(s);
+  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  const pad = n => String(n).padStart(2, '0');
+  const iso = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  const today = () => iso(new Date());
+  const parse = s => new Date(s + 'T12:00:00');
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+  const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+  const fmt = (s, opts = { month: 'short', day: 'numeric' }) => (s ? parse(s).toLocaleDateString(undefined, opts) : '');
+  const fmtLong = s => fmt(s, { weekday: 'short', month: 'short', day: 'numeric' });
+  const sevClass = v => (v ? 's' + Math.min(5, Math.ceil(Number(v) / 2)) : '');
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
+  const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   let toastTimer;
-  const $ = (s,root=document) => root.querySelector(s);
-  const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-  const fmt = d => { if(!d) return ''; const date = new Date(d+'T12:00:00'); return date.toLocaleDateString(undefined,{month:'short',day:'numeric',year:'numeric'}); };
-  const save = () => { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); $('#saveState').textContent = 'Saved on this device'; };
-  const toast = message => { const el=$('#toast'); el.textContent=message; el.classList.add('show'); clearTimeout(toastTimer); toastTimer=setTimeout(()=>el.classList.remove('show'),2600); };
-  const head = (eyebrow,title,sub,action='') => `<div class="page-head"><div><div class="eyebrow">${eyebrow}</div><h1 class="page-title">${title}</h1><p class="page-sub">${sub}</p></div>${action}</div>`;
-  const empty = (title,copy) => `<div class="empty"><strong>${title}</strong>${copy}</div>`;
-  const hasData = () => state.cycleStarts.length+state.symptoms.length+state.checkins.length+state.preNotes.length+state.postNotes.length>0;
-  function newCheckinDraft(){return {id:id(),date:today(),step:'feeling',turns:[{from:'bot',text:'Hi. Let’s take this one question at a time. You can skip anything.'},{from:'bot',text:'How are you feeling today? Share as much or as little as you like.'}],feeling:'',periodStatus:'skip',periodDate:'',symptoms:[],pendingSymptom:'',pendingSeverity:5};}
-  function pushReply(text){if(state.checkinDraft)state.checkinDraft.turns.push({from:'you',text});}
-  function promptCheckin(step,text){const d=state.checkinDraft;if(!d)return;d.step=step;d.turns.push({from:'bot',text});save();render();}
-  function reviewCheckin(){const d=state.checkinDraft;d.step='review';d.turns.push({from:'bot',text:'That’s everything for now. Take a moment to review your check-in before saving it on this device.'});save();render();}
-  function submitCheckin(text,date){const d=state.checkinDraft;if(!d)return;const value=text.trim();
-    if(d.step==='feeling'){if(!value)return;d.feeling=value;pushReply(value);promptCheckin('cycle','Did your period start today, or since your last check-in?');return;}
-    if(d.step==='cycleDate'){if(!date||date>today()){toast('Choose a date today or earlier.');return;}d.periodStatus='started_earlier';d.periodDate=date;pushReply(`It started on ${fmt(date)}.`);promptCheckin('symptoms','Any symptoms you’d like to note? Add one in your own words, or skip.');return;}
-    if(d.step==='symptoms'){if(!value)return;d.pendingSymptom=value;pushReply(value);promptCheckin('severity',`How intense was “${value}” at its strongest today?`);}
+  function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
+  const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
+
+  async function api(action, payload = {}, { keepUser = false } = {}) {
+    const res = await fetch('/api/app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, action, ...payload }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Could not reach Mira. Check your connection.');
+    if (data.user && !keepUser) { user = { ...emptyUser(), ...data.user }; saveCache(); }
+    return data;
   }
-  function handleCheckinAnswer(value){const d=state.checkinDraft;if(!d)return;
-    if(d.step==='feeling'){d.feeling=value==='skip'?'Skipped':value;pushReply(value==='skip'?'Skip for now':value);promptCheckin('cycle','Did your period start today, or since your last check-in?');return;}
-    if(d.step==='cycle'){
-      if(value==='today'){d.periodStatus='started_today';d.periodDate=today();pushReply('Yes, it started today.');promptCheckin('symptoms','Any symptoms you’d like to note? Add one in your own words, or skip.');return;}
-      if(value==='earlier'){pushReply('It started on another date.');promptCheckin('cycleDate','What date did it start?');return;}
-      d.periodStatus=value==='no'?'no':'skip';pushReply(value==='no'?'No.':'Skip this question.');promptCheckin('symptoms','Any symptoms you’d like to note? Add one in your own words, or skip.');return;
+  const tool = (name, input) => api('tool', { name, input });
+
+  // ---------- Routing ----------
+  const ROUTES = ['chat', 'today', 'cycle', 'visit', 'me'];
+  let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
+  const ui = { sending: false, pending: '', failed: '', month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false };
+  function go(to) { route = to; if (location.hash.slice(1) !== to) history.replaceState(null, '', '#' + to); render(); }
+  window.addEventListener('hashchange', () => { const r = location.hash.slice(1); if (ROUTES.includes(r) && r !== route) { route = r; render(); } });
+
+  function render() {
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+    const view = $('#view');
+    view.innerHTML = { chat: renderChat, today: renderToday, cycle: renderCycle, visit: renderVisit, me: renderMe }[route]();
+    if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
+    document.querySelectorAll('textarea.ag-text').forEach(autoGrow);
+  }
+
+  // ---------- Chat ----------
+  const fmtMsg = t => esc(t).replace(/\*([^*\n]+)\*/g, '<strong>$1</strong>').replace(/(^|\s)_([^_\n]+)_(?=\s|$|[.,!?)])/g, '$1<em>$2</em>').replace(/\n/g, '<br>');
+  const stampText = at => {
+    const d = new Date(at), now = new Date();
+    const time = d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+    const sameDay = d.toDateString() === now.toDateString();
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    const day = sameDay ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+    return `<b>${day}</b> ${time}`;
+  };
+  const WELCOME = "Hi, I'm Mira 💚 Text me how you're feeling, your period, or any symptoms, like you would a friend. I'll keep track of it all and help you get ready for appointments.\n\nWhat should I call you?";
+
+  function threadHtml() {
+    const msgs = [...(user.transcript || [])];
+    let html = '';
+    if (!msgs.length) html += `<div class="stamp"><b>Mira</b></div><div class="msg them tail">${fmtMsg(WELCOME)}</div>`;
+    msgs.forEach((m, i) => {
+      const prev = msgs[i - 1], next = msgs[i + 1];
+      if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
+      const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
+      html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}">${fmtMsg(m.text)}</div>`;
+    });
+    if (ui.pending) html += `<div class="msg me tail">${fmtMsg(ui.pending)}</div><div class="typing" aria-label="Mira is typing"><i></i><i></i><i></i></div>`;
+    else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
+    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += `<div class="msg-status">Delivered</div>`;
+    return html;
+  }
+  function chipsHtml() {
+    const first = !(user.transcript || []).length;
+    const list = first
+      ? [user.profile.name ? `Hi Mira, it's ${user.profile.name}` : 'Hi Mira 👋', 'Feeling okay today', 'My period started today', 'I had hot flashes last night']
+      : ['Feeling good today', 'Rough day today', 'My period started today', 'How has my week been?', 'Help me prep for my appointment'];
+    return list.map(t => `<button class="chip" data-chip="${esc(t)}">${esc(t)}</button>`).join('');
+  }
+  function renderChat() {
+    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const tip = ios && !isStandalone() && !store.get(TIP_KEY)
+      ? `<div class="install no-print"><span>📲</span><span><b>Keep Mira on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
+    return `<section class="chat">
+      <header class="chat-head"><div class="avatar">m</div><div class="chat-name">Mira</div><div class="chat-status">Your perimenopause companion</div></header>
+      ${tip}
+      <div class="thread" id="thread" aria-live="polite">${threadHtml()}</div>
+      <div class="chips no-print" id="chips">${chipsHtml()}</div>
+      <form class="composer no-print" id="composer">
+        <label class="sr-only" for="msgInput">Message Mira</label>
+        <textarea id="msgInput" rows="1" placeholder="Message Mira" enterkeyhint="send" autocomplete="off"></textarea>
+        <button class="send" id="sendBtn" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+      </form>
+    </section>`;
+  }
+  function afterChatRender() { scrollThread(); }
+  function scrollThread() { const t = $('#thread'); if (t) t.scrollTop = t.scrollHeight; }
+  function refreshThread() { const t = $('#thread'); if (!t) return; t.innerHTML = threadHtml(); const c = $('#chips'); if (c) c.innerHTML = chipsHtml(); scrollThread(); }
+  function autoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, el.classList.contains('ag-text') ? 400 : 140) + 'px'; }
+
+  async function sendMessage(text) {
+    text = text.trim();
+    if (!text || ui.sending) return;
+    ui.sending = true; ui.pending = text; ui.failed = '';
+    refreshThread();
+    try { await api('chat', { text }); }
+    catch (e) { ui.failed = text; toast(e.message); }
+    ui.sending = false; ui.pending = '';
+    if (route === 'chat') refreshThread();
+  }
+
+  // ---------- Data views ----------
+  const sortedStarts = () => [...user.cycleStarts].sort((a, b) => a.date.localeCompare(b.date));
+  const lastStart = () => sortedStarts().slice(-1)[0];
+  function cycleGaps() { const s = sortedStarts(); return s.slice(1).map((x, i) => diffDays(s[i].date, x.date)).filter(n => n > 0); }
+  function symptomsSince(days) { const from = addDays(today(), -days + 1); return user.symptoms.filter(s => s.date >= from && s.date <= today()); }
+  function topSymptoms(list) {
+    const map = new Map();
+    for (const s of list) {
+      const key = String(s.name || '').trim().toLowerCase(); if (!key) continue;
+      const e = map.get(key) || { name: s.name.trim(), count: 0, sevSum: 0, sevN: 0, days: new Set() };
+      e.count++; e.days.add(s.date); if (Number(s.severity)) { e.sevSum += Number(s.severity); e.sevN++; }
+      map.set(key, e);
     }
-    if(d.step==='symptoms'&&(value==='none'||value==='skip')){pushReply(value==='none'?'No symptoms to add.':'Skip symptoms.');reviewCheckin();return;}
-    if(d.step==='another'){if(value==='yes'){pushReply('Add another symptom.');promptCheckin('symptoms','What else would you like to note?');}else{pushReply('That’s all for today.');reviewCheckin();}}
+    return [...map.values()].sort((a, b) => b.days.size - a.days.size || b.count - a.count);
   }
-  function savePendingSymptom(impact){const d=state.checkinDraft;if(!d||!d.pendingSymptom)return;const note=String(impact||'').trim();d.symptoms.push({name:d.pendingSymptom,severity:Number(d.pendingSeverity||5),impact:note});pushReply(note||'No extra detail.');d.pendingSymptom='';d.pendingSeverity=5;promptCheckin('another','Would you like to add another symptom?');}
-  function checkinButton(label,action,value='',kind='secondary'){return `<button class="button ${kind}" data-action="${action}"${value?` data-value="${esc(value)}"`:''}>${label}</button>`;}
-  function checkinControls(d){
-    if(d.step==='feeling')return `<form class="chat-compose" data-form="checkin-compose"><input class="input" name="text" maxlength="240" placeholder="Type a short answer…" aria-label="How are you feeling today?" autocomplete="off"><button class="button primary" type="submit">Send</button></form><div class="chat-choices">${checkinButton('Pretty good','checkin-answer','Pretty good','soft')}${checkinButton('A little off','checkin-answer','A little off','soft')}${checkinButton('It’s a tough day','checkin-answer','It’s a tough day','soft')}${checkinButton('Skip','checkin-answer','skip')}</div>`;
-    if(d.step==='cycle')return `<div class="chat-choices">${checkinButton('Yes, today','checkin-answer','today','soft')}${checkinButton('No','checkin-answer','no','soft')}${checkinButton('Started earlier','checkin-answer','earlier')}${checkinButton('Skip','checkin-answer','skip')}</div>`;
-    if(d.step==='cycleDate')return `<form class="chat-compose" data-form="checkin-compose"><label class="sr-only" for="checkinDate">Period start date</label><input class="input" id="checkinDate" name="date" type="date" max="${today()}" required><button class="button primary" type="submit">Continue</button></form>`;
-    if(d.step==='symptoms')return `<form class="chat-compose" data-form="checkin-compose"><input class="input" name="text" maxlength="120" placeholder="For example, cramps or headache…" aria-label="Symptom to note" autocomplete="off"><button class="button primary" type="submit">Add</button></form><div class="chat-choices">${checkinButton('No symptoms to add','checkin-answer','none','soft')}${checkinButton('Skip','checkin-answer','skip')}</div>`;
-    if(d.step==='severity')return `<div class="severity-control"><label for="checkinSeverityValue">Intensity <output id="checkinSeverityLabel">${d.pendingSeverity||5} / 10</output></label><input id="checkinSeverityValue" type="range" min="1" max="10" value="${Number(d.pendingSeverity||5)}" aria-label="Symptom intensity from 1 to 10"><div class="severity-scale"><span>Milder</span><span>Stronger</span></div><button class="button primary" data-action="checkin-severity-next">Continue</button></div>`;
-    if(d.step==='impact')return `<form class="impact-compose" data-form="checkin-impact"><label class="label" for="checkinImpact">Anything you want to remember about it? <span class="hint">Optional</span></label><textarea class="textarea" id="checkinImpact" name="impact" maxlength="280" placeholder="For example, what it made harder today…"></textarea><div class="chat-choices"><button class="button primary" type="submit">Save symptom note</button>${checkinButton('Skip detail','checkin-impact-skip')}</div></form>`;
-    if(d.step==='another')return `<div class="chat-choices">${checkinButton('Add another','checkin-answer','yes','soft')}${checkinButton('That’s all','checkin-answer','no')}</div>`;
-    if(d.step==='review')return `<div class="review-box"><div><span>Feeling</span><strong>${esc(d.feeling||'Skipped')}</strong></div><div><span>Period start</span><strong>${d.periodStatus==='started_today'?'Started today':d.periodStatus==='started_earlier'?`Started ${fmt(d.periodDate)}`:d.periodStatus==='no'?'No start recorded':'Skipped'}</strong></div><div><span>Symptoms</span><strong>${d.symptoms.length?d.symptoms.map(x=>`${esc(x.name)} · ${x.severity}/10`).join('<br>'):'None added'}</strong></div></div><div class="chat-choices">${checkinButton('Save today’s check-in','checkin-save','','primary')}${checkinButton('Start over','checkin-reset')}</div>`;
-    return '';
+  function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
+
+  function renderToday() {
+    const name = user.profile.name;
+    const ls = lastStart(), gaps = cycleGaps();
+    const avg = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
+    const since = ls ? diffDays(ls.date, today()) + 1 : null;
+    const appt = user.profile.appointmentDate, apptIn = appt ? diffDays(today(), appt) : null;
+    const s30 = symptomsSince(30), top = topSymptoms(s30).slice(0, 6), maxDays = Math.max(1, ...top.map(t => t.days.size));
+    const logged = new Set([...s30.map(s => s.date), ...user.checkins.filter(c => c.date >= addDays(today(), -29)).map(c => c.date)]);
+    const daySev = {}; s30.forEach(s => { daySev[s.date] = Math.max(daySev[s.date] || 0, Number(s.severity) || 3); });
+    const starts = new Set(user.cycleStarts.map(c => c.date));
+    const strip = Array.from({ length: 30 }, (_, i) => {
+      const d = addDays(today(), i - 29), sev = daySev[d];
+      const bg = sev ? `background:var(--sev-${Math.min(5, Math.ceil(sev / 2))})` : '';
+      const label = `${fmt(d)}${sev ? `: symptoms up to ${sev}/10` : ''}${starts.has(d) ? ', period started' : ''}`;
+      return `<span style="${bg}" class="${starts.has(d) ? 'p' : ''}${d === today() ? ' today' : ''}" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
+    }).join('');
+    const lastCheck = [...user.checkins].sort((a, b) => (b.savedAt || b.date).localeCompare(a.savedAt || a.date))[0];
+    const checkedToday = user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'long', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
+      <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Mira if anything changes.' : 'Text Mira, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
+      <div class="grid three">
+        <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Mira when it starts'}</div></div>
+        <div class="card stat"><div class="stat-label">Average gap</div><div class="stat-value">${avg ? avg + ' days' : '—'}</div><div class="stat-note">${gaps.length ? `Across ${plural(gaps.length + 1, 'period')} · last ${gaps[gaps.length - 1]} days` : 'Needs two period starts'}</div></div>
+        <div class="card stat"><div class="stat-label">Next appointment</div><div class="stat-value">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : '—'}</div><div class="stat-note">${appt ? fmtLong(appt) + (user.profile.clinician ? ' · ' + esc(user.profile.clinician) : '') : '<a href="#visit" data-route="visit">Add a date</a>'}</div></div>
+      </div>
+      <div class="card" style="margin-top:14px">
+        <div class="row"><h2 class="card-title">Last 30 days</h2><span class="pill">${plural(logged.size, 'day')} logged</span></div>
+        <div class="strip" role="img" aria-label="Symptom intensity over the last 30 days">${strip}</div>
+        <div class="row small muted"><span>${fmt(addDays(today(), -29))}</span><span>Today</span></div>
+        <div class="legend"><span><i style="background:var(--sev-1)"></i>Mild</span><span><i style="background:var(--sev-3)"></i>Moderate</span><span><i style="background:var(--sev-5)"></i>Strong</span><span><i style="background:var(--rose);border-radius:50%"></i>Period started</span></div>
+      </div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
+          ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Mira things like “hot flashes last night, a 6”.</div>`}
+        </div>
+        <div class="card"><h2 class="card-title">Recent</h2><p class="card-sub">The latest things you told Mira</p>${recentList()}</div>
+      </div>
+      ${lastCheck ? `<p class="note">Last check-in: “${esc(lastCheck.feeling)}” · ${fmtLong(lastCheck.date)}</p>` : ''}
+      <p class="note">Mira organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
+    </div>`;
   }
-  function renderCheckin(){
-    if(!state.checkinDraft){const completed=[...state.checkins].filter(x=>x.date===today()).sort((a,b)=>(b.savedAt||'').localeCompare(a.savedAt||''));if(!completed.length)state.checkinDraft=newCheckinDraft();else{const last=completed[0];return `${head('A small daily pause','Your check-in is saved','You can add another check-in later today or move on to your dashboard.')}<section class="card pad checkin-complete"><div class="complete-mark">✓</div><h2 class="section-title">Saved on this device</h2><p class="section-copy">Today’s note is in your personal history. Your words have not been sent to an AI service or a clinic.</p><div class="review-box"><div><span>Feeling</span><strong>${esc(last.feeling||'Skipped')}</strong></div><div><span>Symptoms noted</span><strong>${Number(last.symptomCount||0)}</strong></div></div><div class="chat-choices">${checkinButton('Start another check-in','checkin-start','','primary')}${checkinButton('Open dashboard','route-home')}</div></section>`;}}
-    const d=state.checkinDraft;const messages=d.turns.map(turn=>`<div class="chat-row ${turn.from==='you'?'user':'bot'}"><div class="chat-bubble">${esc(turn.text)}</div></div>`).join('');
-    return `${head('Daily check-in','How are you feeling today?','A few gentle prompts. Answer in your own words, tap a quick reply, or skip anything.')}<section class="card checkin-card"><div class="chat-meta"><span class="chat-avatar">m</span><div><strong>Mira Care check-in</strong><small>Just for you · ${fmt(d.date)}</small></div><button class="mini-button chat-reset" data-action="checkin-reset" aria-label="Start this check-in over" title="Start over">↻</button></div><div class="chat-thread" id="checkinThread" aria-live="polite">${messages}</div><div class="chat-controls">${checkinControls(d)}</div></section><p class="checkin-note">This is a guided form, not an AI conversation. Your check-in is saved only in this browser on this device. No clinic receives it.</p><div class="checkin-links"><button class="text-link" data-route="home">Go to dashboard →</button><button class="text-link" data-route="tracker">View cycle & symptoms →</button></div>`;
+  function recentList() {
+    const items = [
+      ...user.symptoms.map(s => ({ date: s.date, title: s.name, meta: [s.severity ? s.severity + '/10' : '', s.impact].filter(Boolean).join(' · '), icon: '🌡️' })),
+      ...user.cycleStarts.map(c => ({ date: c.date, title: 'Period started', meta: '', icon: '🩸' })),
+      ...user.checkins.map(c => ({ date: c.date, title: c.feeling, meta: 'Check-in', icon: '💭' })),
+      ...user.preNotes.map(n => ({ date: n.date, title: n.text, meta: 'For your next visit', icon: '📝' }))
+    ].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 6);
+    if (!items.length) return `<div class="empty"><strong>Nothing yet</strong>Your entries will show up here.</div>`;
+    return items.map(i => `<div class="list-item"><span aria-hidden="true">${i.icon}</span><div class="li-main"><div class="li-title">${esc(i.title)}</div><div class="li-meta">${fmtLong(i.date)}${i.meta ? ' · ' + esc(i.meta) : ''}</div></div></div>`).join('');
   }
-  function completeCheckin(){const d=state.checkinDraft;if(!d)return;const symptomIds=[];if(d.periodDate&&!state.cycleStarts.some(x=>x.date===d.periodDate))state.cycleStarts.push({id:id(),date:d.periodDate});for(const item of d.symptoms){const symptomId=id();symptomIds.push(symptomId);state.symptoms.push({id:symptomId,date:d.date,name:item.name,severity:item.severity,impact:item.impact,notes:''});}state.checkins.push({id:d.id,date:d.date,savedAt:new Date().toISOString(),feeling:d.feeling,periodStatus:d.periodStatus,periodDate:d.periodDate,symptomCount:d.symptoms.length,symptomIds,turns:d.turns});state.checkinDraft=null;save();render();toast('Check-in saved on this device.');}
-  const latestPeriod = () => [...state.cycleStarts].sort((a,b)=>b.date.localeCompare(a.date))[0];
-  const daysSince = date => date ? Math.max(1,Math.floor((new Date(today()+'T12:00:00')-new Date(date+'T12:00:00'))/86400000)+1) : null;
-  function renderHome(){
-    const first = state.profile.name ? `Welcome back, ${esc(state.profile.name)}.` : 'Your health story, in your words.';
-    const next = state.profile.appointmentDate ? fmt(state.profile.appointmentDate) : 'Not added yet';
-    const cycle = latestPeriod(); const day = cycle ? daysSince(cycle.date) : null;
-    return `${head('Your personal space',first,'A clear view of the cycle and visit notes you choose to keep. Your entries stay in this browser on this device.')}<section class="hero"><div class="hero-inner"><div class="eyebrow">A gentler daily rhythm</div><h2>Check in when it feels right.</h2><p>A short guided conversation makes it easier to record how you feel, cycle timing, and any symptoms you want to remember.</p><button class="button primary" data-route="checkin">Start a check-in <span aria-hidden="true">→</span></button></div></section>
-      <div class="grid three" style="margin-bottom:17px"><section class="card stat"><div class="stat-label">Cycle day</div><div class="stat-value">${day ? day : '—'}</div><div class="stat-note">${cycle ? `Since period start · ${fmt(cycle.date)}` : 'Add a period start date'}</div></section><section class="card stat"><div class="stat-label">Symptoms recorded</div><div class="stat-value">${state.symptoms.length}</div><div class="stat-note">${state.symptoms.length?'Your saved entries':'Add only what feels useful'}</div></section><section class="card stat"><div class="stat-label">Next consultation</div><div class="stat-value" style="font-size:20px">${next}</div><div class="stat-note">${state.profile.clinician?`With ${esc(state.profile.clinician)}`:'Add a date when you have one'}</div></section></div>
-      <div class="grid two"><section class="card pad"><div class="row"><div><h2 class="section-title">Pick up where you need</h2><p class="section-copy">Your notes and agenda save automatically on this device.</p></div></div><div class="stack"><button class="quick-card" data-route="checkin"><span class="quick-icon">✳</span><span><strong>Do a quick check-in</strong><small>Answer a few optional prompts in your own words</small></span><span class="quick-arrow">→</span></button><button class="quick-card" data-route="tracker"><span class="quick-icon">◌</span><span><strong>Browse cycle & symptom history</strong><small>Review or edit individual records</small></span><span class="quick-arrow">→</span></button><button class="quick-card" data-route="prep"><span class="quick-icon">✎</span><span><strong>Prepare for a visit</strong><small>Collect the points you want to discuss</small></span><span class="quick-arrow">→</span></button><button class="quick-card" data-route="after"><span class="quick-icon">↗</span><span><strong>Save a follow-up note</strong><small>Keep your own record after a consultation</small></span><span class="quick-arrow">→</span></button></div></section><section class="card pad"><h2 class="section-title">Your recent entries</h2><p class="section-copy">A private timeline built from what you choose to save.</p>${recentEntries()}</section></div><p class="footer-note">Mira Care helps organize your notes for a conversation. It does not diagnose, interpret symptoms, or replace professional care.</p>`;
+
+  function renderCycle() {
+    const [y, m] = ui.month.split('-').map(Number);
+    const first = new Date(y, m - 1, 1), startDow = first.getDay();
+    const gridStart = new Date(y, m - 1, 1 - startDow);
+    const starts = new Set(user.cycleStarts.map(c => c.date));
+    const symByDay = {}; user.symptoms.forEach(s => { (symByDay[s.date] = symByDay[s.date] || []).push(s); });
+    const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<div class="dow">${d}</div>`).join('');
+    const days = Array.from({ length: 42 }, (_, i) => {
+      const d = new Date(gridStart); d.setDate(gridStart.getDate() + i); const s = iso(d);
+      const n = (symByDay[s] || []).length;
+      const cls = ['day', d.getMonth() !== m - 1 ? 'out' : '', s === today() ? 'today' : '', s === ui.selDay ? 'sel' : '', starts.has(s) ? 'period' : ''].filter(Boolean).join(' ');
+      return `<button class="${cls}" data-day="${s}" aria-label="${esc(fmtLong(s))}${starts.has(s) ? ', period started' : ''}${n ? ', ' + plural(n, 'symptom') : ''}">${d.getDate()}${n ? `<span class="dots">${'<i></i>'.repeat(Math.min(3, n))}</span>` : ''}</button>`;
+    }).join('');
+    const sel = ui.selDay, selSyms = symByDay[sel] || [], selStart = user.cycleStarts.find(c => c.date === sel);
+    const selCheck = user.checkins.filter(c => c.date === sel);
+    const gaps = sortedStarts();
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add what happened. Anything you tell Mira in chat shows up here too.</p></div>
+      <div class="card">
+        <div class="cal-head"><button class="icon-btn" data-action="month" data-dir="-1" aria-label="Previous month">‹</button><div class="cal-title">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div><button class="icon-btn" data-action="month" data-dir="1" aria-label="Next month">›</button></div>
+        <div class="cal">${dows}${days}</div>
+        <div class="legend"><span><i style="background:var(--rose)"></i>Period started</span><span><i style="background:var(--brand);border-radius:50%"></i>Symptoms logged</span></div>
+      </div>
+      <div class="card">
+        <div class="row"><h2 class="card-title">${esc(fmtLong(sel))}</h2>${sel <= today() ? (selStart ? `<span class="pill rose">Period started</span>` : `<button class="btn small ghost" data-action="period-on" data-date="${sel}">🩸 Period started this day</button>`) : ''}</div>
+        ${selCheck.map(c => `<p class="li-meta">💭 “${esc(c.feeling)}”</p>`).join('')}
+        ${selSyms.length ? selSyms.map(symItem).join('') : `<p class="card-sub" style="margin-top:8px">No symptoms logged for this day.</p>`}
+        ${sel <= today() ? (ui.showSymForm ? symptomForm(sel) : `<button class="btn ghost" data-action="sym-form" style="margin-top:8px">+ Add a symptom</button>`) : ''}
+      </div>
+      <div class="card">
+        <h2 class="card-title">Period history</h2><p class="card-sub">Days between period starts are counted for you.</p>
+        ${gaps.length ? [...gaps].reverse().map((c, i, arr) => { const prev = arr[i + 1]; return `<div class="list-item"><span aria-hidden="true">🩸</span><div class="li-main"><div class="li-title">${esc(fmtLong(c.date))}</div><div class="li-meta">${prev ? diffDays(prev.date, c.date) + ' days after the previous start' : 'First one logged'}</div></div><button class="icon-btn" data-action="del" data-kind="period_start" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`; }).join('') : `<div class="empty"><strong>No period dates yet</strong>Tap a day above, or tell Mira “my period started today”.</div>`}
+      </div>
+    </div>`;
   }
-  function recentEntries(){ const all=[...state.checkins.map(x=>({...x,title:'Daily check-in',kind:'Check-in'})),...state.symptoms.map(x=>({...x,kind:'Symptom'})),...state.preNotes.map(x=>({...x,kind:'Visit prep'})),...state.postNotes.map(x=>({...x,kind:'After visit'}))].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,4); return all.length?all.map(x=>`<div class="metric-line"><div><div class="metric-name">${esc(x.title||x.name||x.kind)}</div><div class="metric-detail">${esc(x.kind)} · ${fmt(x.date)}</div></div><span class="metric-score">${x.severity?`${x.severity}/10`:''}</span></div>`).join(''):empty('Nothing saved yet','Your entries will appear here after you add them.'); }
-  function renderTracker(){ const cycle=latestPeriod(), day=cycle?daysSince(cycle.date):null; const starts=[...state.cycleStarts].sort((a,b)=>b.date.localeCompare(a.date)); const symptoms=[...state.symptoms].sort((a,b)=>b.date.localeCompare(a.date));
-    return `${head('Your personal tracker','Cycle & symptoms','Log period start dates and symptoms in your own words. Notes stay in this browser on this device.')}<div class="grid two"><div class="stack"><section class="card pad"><div class="row"><div><h2 class="section-title">Cycle notes</h2><p class="section-copy">Track period start dates to see a simple cycle-day estimate.</p></div><span class="tag">${day?`Cycle day ${day}`:'No cycle date yet'}</span></div><form data-form="cycle" class="field-grid"><div class="field"><label class="label" for="cycleDate">Period start date</label><input class="input" id="cycleDate" name="date" type="date" value="${today()}" required></div><div class="field" style="align-self:end"><button class="button primary" type="submit">Save period start</button></div></form><div class="divider"></div><div class="section-kicker">Saved start dates</div>${starts.length?starts.map(x=>`<div class="metric-line"><div class="metric-name">Period started</div><div class="metric-detail">${fmt(x.date)}</div><button class="mini-button" data-action="delete-cycle" data-id="${esc(x.id)}" aria-label="Remove period start">×</button></div>`).join(''):empty('No dates yet','Add a start date whenever you want to track one.')}</section>
-      <section class="card pad"><h2 class="section-title">Add a symptom</h2><p class="section-copy">The more context you choose to add, the easier it is to remember later.</p><form data-form="symptom" class="field-grid"><div class="field"><label class="label" for="symDate">Date</label><input class="input" id="symDate" name="date" type="date" value="${today()}" required></div><div class="field"><label class="label" for="symName">What did you notice?</label><input class="input" id="symName" name="name" placeholder="e.g., cramps, headache, mood change" required maxlength="80"></div><div class="field"><label class="label" for="symSeverity">Intensity (optional)</label><select class="select" id="symSeverity" name="severity"><option value="">Skip intensity</option>${Array.from({length:10},(_,i)=>`<option value="${i+1}">${i+1}${i===0?' · mild':i===9?' · strongest':''}</option>`).join('')}</select></div><div class="field"><label class="label" for="symImpact">Effect on your day (optional)</label><input class="input" id="symImpact" name="impact" placeholder="Sleep, work, movement…" maxlength="100"></div><div class="field full"><label class="label" for="symNotes">Timing or context (optional)</label><textarea class="textarea" id="symNotes" name="notes" placeholder="What was happening around the time? Add as much or as little as you like."></textarea></div><div class="field full"><button class="button primary" type="submit">Save symptom</button></div></form></section></div>
-      <section class="card pad"><div class="row"><div><h2 class="section-title">Your symptom history</h2><p class="section-copy">Entries you can edit or remove at any time.</p></div><span class="tag">${symptoms.length} ${symptoms.length===1?'entry':'entries'}</span></div>${symptoms.length?symptoms.map(x=>`<article class="entry-card"><div class="row"><div><div class="entry-title">${esc(x.name)}</div><div class="entry-meta">${fmt(x.date)}${x.severity?` · Intensity ${x.severity}/10`:''}</div></div><button class="mini-button" data-action="delete-symptom" data-id="${esc(x.id)}" aria-label="Delete ${esc(x.name)} entry">×</button></div>${x.impact?`<span class="tag">${esc(x.impact)}</span>`:''}${x.notes?`<p class="entry-note">${esc(x.notes)}</p>`:''}</article>`).join(''):empty('Your history starts with you','Add an entry to begin noticing your own patterns over time.')}<div class="divider"></div><div class="callout">Cycle day is counted from the period start date you enter. It is a simple date calculation, not a prediction of ovulation or a medical interpretation.</div></section></div>`;
+  function symItem(s) {
+    return `<div class="list-item"><span class="sev-badge ${sevClass(s.severity)}">${s.severity ? s.severity + '/10' : '—'}</span><div class="li-main"><div class="li-title">${esc(s.name)}</div>${s.impact ? `<div class="li-meta">${esc(s.impact)}</div>` : ''}${s.notes ? `<div class="li-note">${esc(s.notes)}</div>` : ''}</div><button class="icon-btn" data-action="del" data-kind="symptom" data-id="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">×</button></div>`;
   }
-  function renderPrep(){ const notes=[...state.preNotes].sort((a,b)=>b.date.localeCompare(a.date)); return `${head('Before a consultation','Prepare for your visit','Add your own appointment details and what you want to discuss. Mira can organize your notes into a first draft that you review and edit.')}<div class="grid two"><section class="card pad"><h2 class="section-title">Your visit details</h2><p class="section-copy">These are optional and saved only in this browser.</p><div class="field-grid"><div class="field"><label class="label" for="appointmentDate">Appointment date</label><input class="input" id="appointmentDate" data-profile="appointmentDate" type="date" value="${esc(state.profile.appointmentDate)}"></div><div class="field"><label class="label" for="clinician">Clinician or clinic (optional)</label><input class="input" id="clinician" data-profile="clinician" value="${esc(state.profile.clinician)}" placeholder="Add a name if useful"></div><div class="field full"><label class="label" for="profileName">What should we call you? (optional)</label><input class="input" id="profileName" data-profile="name" value="${esc(state.profile.name)}" placeholder="Your name"></div></div><div class="divider"></div><form data-form="pre-note"><div class="field"><label class="label" for="preText">What would you like to bring up?</label><textarea class="textarea large" id="preText" name="text" placeholder="Write concerns, questions, changes you’ve noticed, or what you hope to leave the visit understanding…" required></textarea><span class="hint">Use your own words. You can edit or delete this later.</span></div><div class="row" style="margin-top:11px"><span class="hint">Entries are saved on this device</span><button class="button primary" type="submit">Save note</button></div></form><div class="divider"></div><div class="row"><div><h3 class="section-title" style="font-size:16px">Your saved notes</h3><p class="section-copy" style="margin-bottom:0">${notes.length} ${notes.length===1?'note':'notes'} added</p></div><button class="button soft small" data-action="organize-prep" disabled title="AI drafting is off in this preview">AI drafts unavailable</button></div>${notes.length?notes.map(x=>`<article class="entry-card"><div class="row"><div class="entry-meta">${fmt(x.date)}</div><button class="mini-button" data-action="delete-pre" data-id="${esc(x.id)}" aria-label="Delete visit note">×</button></div><p class="entry-note">${esc(x.text)}</p></article>`).join(''):empty('No visit notes yet','Add the questions or details you want to remember.')}<div id="prepAi"></div></section>
-      <section class="card pad"><div class="row"><div><h2 class="section-title">Cycle & symptom notes</h2><p class="section-copy">A short recent snapshot to help you decide what belongs on the agenda.</p></div><button class="button secondary small" data-route="tracker">Open tracker</button></div>${state.symptoms.length?[...state.symptoms].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,6).map(x=>`<div class="metric-line"><div><div class="metric-name">${esc(x.name)}</div><div class="metric-detail">${fmt(x.date)}${x.notes?` · ${esc(x.notes.slice(0,70))}${x.notes.length>70?'…':''}`:''}</div></div><span class="metric-score">${x.severity?`${x.severity}/10`:''}</span></div>`).join(''):empty('No symptom notes to review','Your tracker entries will show here after you add them.')}<div class="divider"></div>${state.cycleStarts.length?`<div class="callout">You have ${state.cycleStarts.length} period start ${state.cycleStarts.length===1?'date':'dates'} saved. Include only what you want to talk about.</div>`:'<div class="callout">Cycle dates are optional. You decide whether they belong in a visit conversation.</div>'}<div class="ai-card"><div class="ai-heading"><span class="ai-label">AI visit organizer</span><span class="pill">No diagnosis</span></div><p class="section-copy" style="margin:8px 0 0">AI drafting is off in this preview. You can write, edit, and save your own agenda; your notes stay in this browser.</p></div></section></div>`; }
-  function renderAgenda(){ const a=state.agenda; return `${head('Your words, shaped into a draft','Visit agenda','Review and edit every line before you use it. This agenda is yours to keep, print, or copy.','<button class="button secondary no-print" data-action="print">Print agenda</button>')}<section class="card pad"><div class="row"><div><h2 class="section-title">A conversation plan that sounds like you</h2><p class="section-copy">${state.profile.appointmentDate?`For ${fmt(state.profile.appointmentDate)}${state.profile.clinician?` · ${esc(state.profile.clinician)}`:''}`:'Add an appointment date from Prepare for visit if you want it shown here.'}</p></div><div class="row no-print"><button class="button secondary small" data-action="copy-agenda">Copy</button><button class="button soft small" data-action="organize-prep" disabled title="AI drafting is off in this preview">AI drafts unavailable</button></div></div><div class="item-section"><div class="section-kicker">Opening summary</div><textarea class="textarea" data-agenda="summary" placeholder="Write a short opening summary in your own words…">${esc(a.summary)}</textarea></div><div class="item-section"><div class="row"><div class="section-kicker" style="margin:0">Topics to discuss</div><button class="button secondary small no-print" data-action="add-topic">+ Add topic</button></div><div id="agendaTopics">${renderList(a.topics,'topic')}</div></div><div class="item-section"><div class="row"><div class="section-kicker" style="margin:0">Questions I want to ask</div><button class="button secondary small no-print" data-action="add-question">+ Add question</button></div><div id="agendaQuestions">${renderList(a.questions,'question')}</div></div><div class="divider"></div><div class="callout">Your agenda is yours to write and edit. Check medical instructions directly with your clinician.</div></section><p class="footer-note">Mira Care organizes your own notes. It does not diagnose or recommend treatment.</p>`; }
-  function renderList(list,type){ const noun=type==='topic'?'topics':type==='step'?'reminders':'questions'; if(!list.length)return `<div class="empty" style="margin-top:10px"><strong>No ${noun} added yet</strong>Add one yourself or create an AI draft from your notes.</div>`; return list.map((item,i)=>`<div class="agenda-item"><span class="agenda-num">${i+1}</span><textarea class="agenda-text" data-list="${type}" data-index="${i}" rows="2">${esc(item)}</textarea><div class="agenda-tools no-print"><button class="mini-button" data-action="move-item" data-list="${type}" data-index="${i}" data-dir="-1" aria-label="Move up" ${i===0?'disabled':''}>↑</button><button class="mini-button" data-action="move-item" data-list="${type}" data-index="${i}" data-dir="1" aria-label="Move down" ${i===list.length-1?'disabled':''}>↓</button><button class="mini-button" data-action="remove-item" data-list="${type}" data-index="${i}" aria-label="Remove item">×</button></div></div>`).join(''); }
-  function renderAfter(){ const notes=[...state.postNotes].sort((a,b)=>b.date.localeCompare(a.date)); const f=state.followup; return `${head('After your consultation','Keep the next steps clear','Record what you want to remember from the conversation. Organize your own notes into a follow-up draft, then review it before saving.')}<div class="grid two"><section class="card pad"><h2 class="section-title">Your after-visit note</h2><p class="section-copy">Write what you remember or want to follow up on. This stays on this device.</p><form data-form="post-note"><div class="field"><label class="label" for="postText">What do you want to remember?</label><textarea class="textarea large" id="postText" name="text" placeholder="Key points from the conversation, what you agreed to do, or what you still want to ask…" required></textarea></div><div class="row" style="margin-top:11px"><span class="hint">No message is sent to a clinic</span><button class="button primary" type="submit">Save after-visit note</button></div></form><div class="divider"></div><div class="row"><div><h3 class="section-title" style="font-size:16px">Saved after-visit notes</h3><p class="section-copy" style="margin-bottom:0">${notes.length} ${notes.length===1?'note':'notes'}</p></div><button class="button soft small" data-action="organize-after" disabled title="AI drafting is off in this preview">AI drafts unavailable</button></div>${notes.length?notes.map(x=>`<article class="entry-card"><div class="row"><div class="entry-meta">${fmt(x.date)}</div><button class="mini-button" data-action="delete-post" data-id="${esc(x.id)}" aria-label="Delete after-visit note">×</button></div><p class="entry-note">${esc(x.text)}</p></article>`).join(''):empty('Nothing saved after a visit','Add a note when you have something you want to remember.')}<div id="afterAi"></div></section>
-      <section class="card pad"><h2 class="section-title">Your follow-up draft</h2><p class="section-copy">An editable personal reminder list. It isn’t a medical plan.</p><div class="field"><label class="label" for="followSummary">Summary to keep</label><textarea class="textarea" id="followSummary" data-follow="summary" placeholder="Write a short summary based on what you want to remember…">${esc(f.summary)}</textarea></div><div class="item-section"><div class="row"><div class="section-kicker" style="margin:0">My next steps</div><button class="button secondary small" data-action="add-step">+ Add reminder</button></div><div id="followSteps">${renderList(f.steps,'step')}</div></div><div class="item-section"><div class="row"><div class="section-kicker" style="margin:0">Questions for next time</div><button class="button secondary small" data-action="add-followup-question">+ Add question</button></div><div id="followQuestions">${renderList(f.questions,'followup-question')}</div></div><div class="divider"></div><div class="callout">Check your clinician’s instructions directly if you’re unsure about a next step. Mira does not create or verify medical instructions.</div></section></div>`; }
-  const titles={checkin:'Daily check-in',home:'Dashboard',tracker:'Cycle & symptoms',prep:'Prepare for visit',agenda:'Visit agenda',after:'After visit'};
-  function render(){ const fn={checkin:renderCheckin,home:renderHome,tracker:renderTracker,prep:renderPrep,agenda:renderAgenda,after:renderAfter}[route]; $('#view').innerHTML=fn(); $('#breadcrumb').textContent='Your space / '+titles[route]; document.querySelectorAll('.nav-item').forEach(b=>b.classList.toggle('active',b.dataset.route===route)); }
-  function go(to){route=to;render();window.scrollTo({top:0,behavior:'smooth'});}
-  function id(){return crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random());}
-  function callAI(mode){
-    const target=mode==='after'?'afterAi':'prepAi';
-    const box=document.getElementById(target);
-    if(box) box.innerHTML='<div class="alert"><strong>AI drafts are off in this preview.</strong><br>You can write and edit your agenda or follow-up notes yourself. Your entries stay in this browser and are not sent to an AI service.</div>';
-    toast('AI drafting is off in this preview.');
+  function symptomForm(date) {
+    return `<form data-form="symptom" class="form-grid" style="margin-top:12px">
+      <input type="hidden" name="date" value="${date}">
+      <div class="field full"><label for="symName">What did you notice?</label><input class="input" id="symName" name="name" required maxlength="80" placeholder="e.g. hot flashes, brain fog, joint pain"></div>
+      <div class="field full"><label for="symSev">Intensity <output id="sevOut">5</output>/10</label><input id="symSev" name="severity" type="range" min="1" max="10" value="5"><div class="sev-row"><span>Mild</span><span>Strong</span></div></div>
+      <div class="field full"><label for="symImpact">How it affected your day (optional)</label><input class="input" id="symImpact" name="impact" maxlength="200" placeholder="e.g. woke up twice"></div>
+      <div class="row full"><button type="button" class="btn ghost" data-action="sym-cancel">Cancel</button><button class="btn primary" type="submit">Save symptom</button></div>
+    </form>`;
   }
-  function listRef(type){return type==='topic'?state.agenda.topics:type==='question'?state.agenda.questions:type==='followup-question'?state.followup.questions:state.followup.steps;}
-  function handleAction(action,el){const i=Number(el.dataset.index),ix=el.dataset.id;
-    if(action==='route-home'){go('home');return;}
-    if(action==='checkin-start'){state.checkinDraft=newCheckinDraft();save();render();return;}
-    if(action==='checkin-answer'){handleCheckinAnswer(el.dataset.value||'');return;}
-    if(action==='checkin-reset'){state.checkinDraft=newCheckinDraft();save();render();return;}
-    if(action==='checkin-severity-next'){const slider=$('#checkinSeverityValue');const d=state.checkinDraft;if(d&&slider){d.pendingSeverity=Number(slider.value);pushReply(`Intensity: ${slider.value} out of 10.`);promptCheckin('impact','Would you like to add a little context? This is optional.');}return;}
-    if(action==='checkin-impact-skip'){savePendingSymptom('');return;}
-    if(action==='checkin-save'){completeCheckin();return;}
-    if(action==='export'){const blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='mira-care-my-data.json';a.click();URL.revokeObjectURL(a.href);toast('Your data export is ready.');}
-    else if(action==='privacy'){document.getElementById('modalRoot').innerHTML=`<div class="modal-backdrop" id="modalBackdrop"><section class="modal"><h3>Your data, your choice</h3><p>Your entries are stored in this browser on this device. This preview has no user account or app database; your notes do not sync across devices and the server does not receive them. Anyone who uses this same browser profile may see its saved entries. Use Export my data to download a copy, or Delete all local data to remove them from this browser.</p><p>AI drafting is turned off in this preview, so your notes are not sent to an AI service. Mira Care helps organize personal notes; it is not a medical service. Confirm health questions and next steps directly with a qualified clinician.</p><div class="row"><button class="button danger" data-action="clear-data">Delete all local data</button><button class="button secondary" data-action="close-modal">Close</button></div></section></div>`;}
-    else if(action==='close-modal'){document.getElementById('modalRoot').innerHTML='';}
-    else if(action==='clear-data'){if(confirm('Delete all Mira Care data saved in this browser? This cannot be undone.')){state=fresh();save();document.getElementById('modalRoot').innerHTML='';go('home');toast('Local data deleted.');}}
-    else if(action==='delete-cycle'){state.cycleStarts=state.cycleStarts.filter(x=>x.id!==ix);save();render();toast('Period start removed.');}
-    else if(action==='delete-symptom'){state.symptoms=state.symptoms.filter(x=>x.id!==ix);save();render();toast('Symptom entry removed.');}
-    else if(action==='delete-pre'){state.preNotes=state.preNotes.filter(x=>x.id!==ix);save();render();toast('Visit note removed.');}
-    else if(action==='delete-post'){state.postNotes=state.postNotes.filter(x=>x.id!==ix);save();render();toast('After-visit note removed.');}
-    else if(action==='organize-prep'){if(route==='agenda'){go('prep');setTimeout(()=>callAI('prep'),0);}else callAI('prep');} else if(action==='organize-after')callAI('after');
-    else if(action==='add-topic'||action==='add-question'||action==='add-step'||action==='add-followup-question'){const type=action==='add-topic'?'topic':action==='add-question'?'question':action==='add-followup-question'?'followup-question':'step';listRef(type).push('');save();render();const f=document.querySelector(`[data-list="${type}"][data-index="${listRef(type).length-1}"]`);f?.focus();}
-    else if(action==='remove-item'){listRef(el.dataset.list).splice(i,1);save();render();}
-    else if(action==='move-item'){const list=listRef(el.dataset.list),j=i+Number(el.dataset.dir);if(j>=0&&j<list.length){[list[i],list[j]]=[list[j],list[i]];save();render();}}
-    else if(action==='copy-agenda'){const text=[state.agenda.summary,...state.agenda.topics.map((x,i)=>`${i+1}. ${x}`),'Questions',...state.agenda.questions.map((x,i)=>`${i+1}. ${x}`)].filter(Boolean).join('\n');if(navigator.clipboard?.writeText){navigator.clipboard.writeText(text).then(()=>toast('Agenda copied.')).catch(()=>toast('Copy unavailable in this browser.'));}else{const box=document.createElement('textarea');box.value=text;document.body.appendChild(box);box.select();const ok=document.execCommand('copy');box.remove();toast(ok?'Agenda copied.':'Copy unavailable in this browser.');}}
-    else if(action==='print')window.print();
+
+  function renderVisit() {
+    const tabs = [['before', 'Before'], ['agenda', 'Agenda'], ['after', 'After']];
+    const body = ui.visitTab === 'before' ? visitBefore() : ui.visitTab === 'agenda' ? visitAgenda() : visitAfter();
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Collect what you want to raise, let Mira turn it into an agenda, and keep track of next steps.</p></div>
+      <div class="seg no-print" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${ui.visitTab === k}" class="${ui.visitTab === k ? 'on' : ''}" data-visit="${k}">${l}</button>`).join('')}</div>
+      ${body}
+    </div>`;
   }
-  document.addEventListener('click',e=>{const routeBtn=e.target.closest('[data-route]');if(routeBtn){go(routeBtn.dataset.route);return;}const act=e.target.closest('[data-action]');if(act){handleAction(act.dataset.action,act);return;}});
-  document.addEventListener('submit',e=>{const form=e.target.closest('[data-form]');if(!form)return;e.preventDefault();const d=new FormData(form);
-    if(form.dataset.form==='checkin-compose'){submitCheckin(String(d.get('text')||''),String(d.get('date')||''));return;}
-    if(form.dataset.form==='checkin-impact'){savePendingSymptom(String(d.get('impact')||''));return;}
-    if(form.dataset.form==='cycle'){const date=String(d.get('date')||'');if(state.cycleStarts.some(x=>x.date===date)){toast('That period start date is already saved.');return;}state.cycleStarts.push({id:id(),date});save();render();toast('Period start saved on this device.');}
-    if(form.dataset.form==='symptom'){const name=String(d.get('name')||'').trim();if(!name){toast('Add a symptom name first.');return;}state.symptoms.push({id:id(),date:String(d.get('date')||today()),name,severity:String(d.get('severity')||''),impact:String(d.get('impact')||'').trim(),notes:String(d.get('notes')||'').trim()});save();render();toast('Symptom saved on this device.');}
-    if(form.dataset.form==='pre-note'){const text=String(d.get('text')||'').trim();if(!text)return;state.preNotes.push({id:id(),date:today(),text});save();render();toast('Visit note saved.');}
-    if(form.dataset.form==='post-note'){const text=String(d.get('text')||'').trim();if(!text)return;state.postNotes.push({id:id(),date:today(),text});save();render();toast('After-visit note saved.');}
+  function visitBefore() {
+    const p = user.profile;
+    const notes = [...user.preNotes].sort((a, b) => b.date.localeCompare(a.date));
+    return `<div class="card">
+        <h2 class="card-title">Next appointment</h2><p class="card-sub">Optional. Mira uses this to remind you what to bring up.</p>
+        <div class="form-grid"><div class="field"><label for="apptDate">Date</label><input class="input" id="apptDate" type="date" data-profile="appointment_date" value="${esc(p.appointmentDate)}"></div>
+        <div class="field"><label for="clinician">Clinician or clinic</label><input class="input" id="clinician" data-profile="clinician" value="${esc(p.clinician)}" placeholder="e.g. Dr. Patel"></div></div>
+      </div>
+      <div class="card">
+        <h2 class="card-title">Things to bring up</h2><p class="card-sub">Questions, worries, or changes you've noticed. You can also just tell Mira in chat.</p>
+        <form data-form="pre-note" class="stack"><textarea class="textarea" name="text" required placeholder="e.g. My sleep has been much worse since August"></textarea><div class="row"><span class="small muted">${plural(notes.length, 'note')}</span><button class="btn primary" type="submit">Add note</button></div></form>
+        <div style="margin-top:8px">${notes.map(n => `<div class="list-item"><span aria-hidden="true">📝</span><div class="li-main"><div class="li-note" style="margin-top:0">${esc(n.text)}</div><div class="li-meta">${fmtLong(n.date)}</div></div><button class="icon-btn" data-action="del" data-kind="visit_note" data-id="${esc(n.id)}" aria-label="Delete note">×</button></div>`).join('')}</div>
+      </div>
+      <button class="btn primary sparkle" style="width:100%;margin-top:14px" data-action="draft" data-mode="prep" ${ui.drafting ? 'disabled' : ''}>${ui.drafting ? 'Mira is writing…' : '✨ Turn my notes into an agenda'}</button>`;
+  }
+  function listEditor(field, key, items, placeholder) {
+    return `<div>${items.map((t, i) => `<div class="ag-item"><span class="ag-num">${i + 1}</span><textarea class="ag-text" rows="1" data-edit="${field}.${key}" data-index="${i}" aria-label="${esc(placeholder)} ${i + 1}">${esc(t)}</textarea><span class="ag-tools no-print"><button class="icon-btn" data-action="move" data-field="${field}" data-key="${key}" data-index="${i}" data-dir="-1" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="icon-btn" data-action="remove" data-field="${field}" data-key="${key}" data-index="${i}" aria-label="Remove">×</button></span></div>`).join('')}
+      <button class="btn small ghost no-print" style="margin-top:10px" data-action="add-item" data-field="${field}" data-key="${key}">+ Add</button></div>`;
+  }
+  function visitAgenda() {
+    const a = user.agenda, empty = !a.summary && !a.topics.length && !a.questions.length;
+    const when = user.profile.appointmentDate ? `For ${fmtLong(user.profile.appointmentDate)}${user.profile.clinician ? ' with ' + esc(user.profile.clinician) : ''}` : 'Add your appointment date under Before';
+    return `<div class="card">
+      <div class="row"><div><h2 class="card-title">Visit agenda</h2><p class="card-sub" style="margin:0">${when}</p></div>
+      <button class="btn small sparkle no-print" data-action="draft" data-mode="prep" ${ui.drafting ? 'disabled' : ''}>${ui.drafting ? 'Writing…' : empty ? '✨ Draft' : '✨ Redraft'}</button></div>
+      ${empty ? `<div class="empty" style="margin-top:14px"><strong>No agenda yet</strong>Mira can draft one from your symptoms, cycle and notes. You can edit every line.</div>` : `
+      <div class="section-kicker">Opening summary</div><textarea class="textarea" data-edit="agenda.summary" aria-label="Opening summary">${esc(a.summary)}</textarea>
+      <div class="section-kicker">Topics</div>${listEditor('agenda', 'topics', a.topics, 'Topic')}
+      <div class="section-kicker">Questions to ask</div>${listEditor('agenda', 'questions', a.questions, 'Question')}
+      <div class="row-wrap no-print" style="margin-top:18px"><button class="btn ghost" data-action="share-agenda">Share</button><button class="btn ghost" data-action="copy-agenda">Copy</button><button class="btn ghost" data-action="print">Print</button></div>`}
+    </div><p class="note">Drafts use only what you've logged. Check medical questions with your clinician.</p>`;
+  }
+  function visitAfter() {
+    const f = user.followup, notes = [...user.postNotes].sort((a, b) => b.date.localeCompare(a.date));
+    const empty = !f.summary && !f.steps.length && !f.questions.length;
+    return `<div class="card">
+        <h2 class="card-title">After your appointment</h2><p class="card-sub">Write down what you remember while it's fresh: what was said, what to do next.</p>
+        <form data-form="post-note" class="stack"><textarea class="textarea" name="text" required placeholder="e.g. Doctor suggested tracking sleep for 4 weeks and coming back in December"></textarea><div class="row"><span class="small muted">${plural(notes.length, 'note')}</span><button class="btn primary" type="submit">Save note</button></div></form>
+        <div style="margin-top:8px">${notes.map(n => `<div class="list-item"><span aria-hidden="true">🗒️</span><div class="li-main"><div class="li-note" style="margin-top:0">${esc(n.text)}</div><div class="li-meta">${fmtLong(n.date)}</div></div><button class="icon-btn" data-action="del" data-kind="after_note" data-id="${esc(n.id)}" aria-label="Delete note">×</button></div>`).join('')}</div>
+      </div>
+      <div class="card">
+        <div class="row"><h2 class="card-title">Follow-up list</h2><button class="btn small sparkle no-print" data-action="draft" data-mode="after" ${ui.drafting || !notes.length ? 'disabled' : ''}>${ui.drafting ? 'Writing…' : '✨ Draft from notes'}</button></div>
+        ${empty ? `<div class="empty" style="margin-top:12px"><strong>No follow-up list yet</strong>${notes.length ? 'Tap Draft to turn your notes into next steps.' : 'Save a note above first.'}</div>` : `
+        <div class="section-kicker">Summary</div><textarea class="textarea" data-edit="followup.summary" aria-label="Summary">${esc(f.summary)}</textarea>
+        <div class="section-kicker">Next steps</div>${listEditor('followup', 'steps', f.steps, 'Step')}
+        <div class="section-kicker">Questions for next time</div>${listEditor('followup', 'questions', f.questions, 'Question')}`}
+      </div>`;
+  }
+
+  function renderMe() {
+    const p = user.profile, link = `${location.origin}/?device=${deviceId}`;
+    const counts = [[user.symptoms.length, 'symptom'], [user.cycleStarts.length, 'period start'], [user.checkins.length, 'check-in'], [user.preNotes.length + user.postNotes.length, 'visit note']];
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">Settings</div><h1 class="title">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${counts.map(([n, w]) => plural(n, w)).join(' · ')}</p></div>
+      <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Mira calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
+      ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Mira to your Home Screen</h2><p class="card-sub" style="margin:0">On iPhone: open this site in <b>Safari</b>, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. Mira then opens straight into the chat, like an app.</p></div>`}
+      <div class="card"><h2 class="card-title">Use Mira on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
+        <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
+      <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
+        <div class="row-wrap"><button class="btn ghost" data-action="export">Download my data</button>
+        <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
+      <p class="note">Mira Care is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
+    </div>`;
+  }
+
+  // ---------- Agenda editing ----------
+  const patchSoon = debounce(async field => { try { await api('patch', { [field]: user[field] }, { keepUser: true }); saveCache(); } catch (e) { toast(e.message); } }, 600);
+  function agendaText() {
+    const a = user.agenda;
+    return [a.summary, a.topics.length ? '\nTopics:\n' + a.topics.map((t, i) => `${i + 1}. ${t}`).join('\n') : '', a.questions.length ? '\nQuestions:\n' + a.questions.map((t, i) => `${i + 1}. ${t}`).join('\n') : ''].filter(Boolean).join('\n');
+  }
+  async function copy(text, done) {
+    try { await navigator.clipboard.writeText(text); toast(done); }
+    catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast(done); }
+  }
+
+  // ---------- Events ----------
+  async function guarded(fn, okMsg) { try { await fn(); if (okMsg) toast(okMsg); } catch (e) { toast(e.message); } render(); }
+
+  document.addEventListener('click', async e => {
+    const r = e.target.closest('[data-route]');
+    if (r) { e.preventDefault(); go(r.dataset.route); return; }
+    const chip = e.target.closest('[data-chip]');
+    if (chip) { sendMessage(chip.dataset.chip); return; }
+    const day = e.target.closest('[data-day]');
+    if (day) { ui.selDay = day.dataset.day; ui.showSymForm = false; render(); return; }
+    const vt = e.target.closest('[data-visit]');
+    if (vt) { ui.visitTab = vt.dataset.visit; render(); return; }
+    const a = e.target.closest('[data-action]');
+    if (!a) return;
+    const act = a.dataset.action;
+    if (act !== 'reset') ui.confirmReset = false;
+    if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
+    else if (act === 'dismiss-tip') { store.set(TIP_KEY, '1'); render(); }
+    else if (act === 'month') { const [y, m] = ui.month.split('-').map(Number); const d = new Date(y, m - 1 + Number(a.dataset.dir), 1); ui.month = iso(d).slice(0, 7); render(); }
+    else if (act === 'period-on') guarded(() => tool('log_period_start', { date: a.dataset.date }), 'Period start saved');
+    else if (act === 'sym-form') { ui.showSymForm = true; render(); $('#symName')?.focus(); }
+    else if (act === 'sym-cancel') { ui.showSymForm = false; render(); }
+    else if (act === 'del') guarded(() => tool('delete_entry', { kind: a.dataset.kind, id: a.dataset.id }), 'Removed');
+    else if (act === 'draft') {
+      ui.drafting = true; render();
+      try { await api('draft', { mode: a.dataset.mode }); if (a.dataset.mode === 'prep') ui.visitTab = 'agenda'; toast('Draft ready. Edit anything you like.'); }
+      catch (err) { toast(err.message); }
+      ui.drafting = false; render();
+    }
+    else if (act === 'add-item' || act === 'remove' || act === 'move') {
+      const list = user[a.dataset.field][a.dataset.key], i = Number(a.dataset.index);
+      if (act === 'add-item') list.push('');
+      if (act === 'remove') list.splice(i, 1);
+      if (act === 'move' && i > 0) [list[i - 1], list[i]] = [list[i], list[i - 1]];
+      saveCache(); patchSoon(a.dataset.field); render();
+      if (act === 'add-item') document.querySelectorAll(`[data-edit="${a.dataset.field}.${a.dataset.key}"]`).forEach((el, idx, all) => { if (idx === all.length - 1) el.focus(); });
+    }
+    else if (act === 'copy-agenda') copy(agendaText(), 'Agenda copied');
+    else if (act === 'share-agenda') { if (navigator.share) navigator.share({ title: 'My visit agenda', text: agendaText() }).catch(() => {}); else copy(agendaText(), 'Agenda copied'); }
+    else if (act === 'print') window.print();
+    else if (act === 'copy-link') copy(a.dataset.link, 'Private link copied');
+    else if (act === 'export') {
+      const blob = new Blob([JSON.stringify(user, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `mira-care-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
+    }
+    else if (act === 'reset') {
+      if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
+      ui.confirmReset = false; guarded(() => api('reset'), 'Everything erased');
+    }
   });
-  document.addEventListener('input',e=>{const el=e.target;if(el.id==='checkinSeverityValue'){const out=$('#checkinSeverityLabel');if(out)out.textContent=`${el.value} / 10`;}if(el.dataset.profile){state.profile[el.dataset.profile]=el.value;save();if(route==='prep'&&el.dataset.profile==='appointmentDate'){} }
-    if(el.dataset.agenda==='summary'){state.agenda.summary=el.value;save();}
-    if(el.dataset.list){const list=listRef(el.dataset.list);list[Number(el.dataset.index)]=el.value;save();}
-    if(el.dataset.follow==='summary'){state.followup.summary=el.value;save();}
+
+  document.addEventListener('submit', e => {
+    const form = e.target;
+    if (form.id === 'composer') { e.preventDefault(); const box = $('#msgInput'); const t = box.value; box.value = ''; autoGrow(box); $('#sendBtn').disabled = true; sendMessage(t); return; }
+    const kind = form.dataset.form; if (!kind) return;
+    e.preventDefault();
+    const d = new FormData(form);
+    if (kind === 'symptom') { ui.showSymForm = false; guarded(() => tool('log_symptoms', { date: d.get('date'), symptoms: [{ name: d.get('name'), severity: Number(d.get('severity')), impact: d.get('impact') }] }), 'Symptom saved'); }
+    if (kind === 'pre-note') guarded(() => tool('add_visit_note', { text: d.get('text') }), 'Note added');
+    if (kind === 'post-note') guarded(() => tool('add_after_visit_note', { text: d.get('text') }), 'Note saved');
   });
-  document.addEventListener('change',e=>{const el=e.target;if(el.dataset.profile){state.profile[el.dataset.profile]=el.value;save();if(route==='prep')render();}});
-  function checkAI(){
-    const dot=$('#aiDot'),title=$('#aiStatus'),copy=$('#aiStatusCopy');
-    if(dot)dot.classList.remove('ready');
-    if(title)title.textContent='AI drafting is off';
-    if(copy)copy.textContent='Your notes stay in this browser. This preview does not send them to an AI service.';
-  }
-  render();checkAI();
+
+  document.addEventListener('input', e => {
+    const el = e.target;
+    if (el.id === 'msgInput') { autoGrow(el); $('#sendBtn').disabled = !el.value.trim(); }
+    if (el.id === 'symSev') $('#sevOut').textContent = el.value;
+    if (el.dataset.edit) {
+      const [field, key] = el.dataset.edit.split('.');
+      if (el.dataset.index !== undefined) user[field][key][Number(el.dataset.index)] = el.value; else user[field][key] = el.value;
+      if (el.classList.contains('ag-text')) autoGrow(el);
+      saveCache(); patchSoon(field);
+    }
+  });
+  document.addEventListener('keydown', e => {
+    if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
+  });
+  document.addEventListener('change', e => {
+    const el = e.target;
+    if (el.dataset.profile) guarded(() => tool('save_profile', { [el.dataset.profile]: el.value }), 'Saved');
+  });
+
+  // ---------- Start ----------
+  render();
+  (async () => {
+    try {
+      await api('load');
+      // Bring over entries saved by the old browser-only version of the site.
+      const old = store.get(OLD_KEY);
+      if (old && !hasData(user)) {
+        try { const data = await api('import', { state: JSON.parse(old) }); if (data.imported) { store.set(OLD_KEY + '-imported', old); store.del(OLD_KEY); toast('Your earlier notes were moved into Mira'); } } catch {}
+      }
+      // On the chat screen only refresh the messages, so a half-typed message isn't wiped.
+      if (route === 'chat') refreshThread(); else render();
+    } catch (e) { toast('Offline: showing your last saved data'); }
+  })();
+  if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 })();

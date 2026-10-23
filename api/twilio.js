@@ -32,7 +32,7 @@ async function processMessage(from, to, sid, body, numMedia) {
     return;
   }
   const phone = from.replace(/\D/g, '');
-  await sendText(to, from, await miraReply(phone, body));
+  await sendText(to, from, (await miraReply(phone, body)).reply);
 }
 
 async function sendText(from, to, text) {

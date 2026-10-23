@@ -1,19 +1,19 @@
 // Mira's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
-// Channel-agnostic: WhatsApp today, iMessage (or anything else) later can call handleIncoming too.
+// Channel-agnostic: the Mira app, WhatsApp, and later iMessage all call handleIncoming.
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
 
-export const SYSTEM_PROMPT = `You are Mira, a warm, calm companion that people text on WhatsApp to keep track of their perimenopause: how they feel, their period, and symptoms. You help them remember what happened so they can talk to their clinician with clear notes.
+export const SYSTEM_PROMPT = `You are Mira, a warm, calm companion that people text (in the Mira app or on WhatsApp) to keep track of their perimenopause: how they feel, their period, and symptoms. You help them remember what happened so they can talk to their clinician with clear notes.
 
 How you text:
 - Short, friendly messages like a thoughtful friend. Usually 1-3 sentences. No long lists unless they ask for a summary.
 - Ask at most one question at a time. Never interrogate; everything is optional and it's fine to skip.
-- WhatsApp formatting only: *bold*, _italic_, simple line breaks. No markdown headings or tables.
+- Chat formatting only: *bold*, _italic_, simple line breaks. No markdown headings, links or tables.
 - Match their language and energy. Emojis sparingly.
 
 What you do:
-- Whenever they mention a symptom, a period starting, how they feel, an appointment, or something to raise at a visit, save it with your tools right away, then briefly confirm what you saved in plain words (e.g. "Saved: hot flashes, 7/10, kept you up").
+- Whenever they mention a symptom, a period starting, how they feel, an appointment, something to raise at a visit, or what happened at a visit, save it with your tools right away, then briefly confirm what you saved in plain words (e.g. "Saved: hot flashes, 7/10, kept you up").
 - If a symptom has no intensity, you may ask once for a 1-10 rating, but log it anyway first.
 - Dates: work out the real date from words like "yesterday" or "last Tuesday" using today's date given in the context. If unclear, assume today.
 - Use get_my_history before answering questions about their past entries, patterns or for a visit summary.
@@ -94,6 +94,15 @@ export const TOOLS = [
     }
   },
   {
+    name: 'add_after_visit_note',
+    description: 'Save something they want to remember from an appointment that already happened (what was said, next steps, things to follow up on).',
+    input_schema: {
+      type: 'object',
+      properties: { text: { type: 'string' } },
+      required: ['text']
+    }
+  },
+  {
     name: 'get_my_history',
     description: 'Read their saved entries from the last N days (symptoms, period starts, check-ins, visit notes, profile). Each entry has an id usable with delete_entry.',
     input_schema: {
@@ -107,7 +116,7 @@ export const TOOLS = [
     input_schema: {
       type: 'object',
       properties: {
-        kind: { type: 'string', enum: ['symptom', 'period_start', 'checkin', 'visit_note'] },
+        kind: { type: 'string', enum: ['symptom', 'period_start', 'checkin', 'visit_note', 'after_note'] },
         id: { type: 'string' }
       },
       required: ['kind', 'id']
@@ -116,7 +125,24 @@ export const TOOLS = [
 ];
 
 export function freshUser() {
-  return { profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], history: [], createdAt: new Date().toISOString() };
+  return {
+    profile: { name: '', appointmentDate: '', clinician: '' },
+    cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [],
+    agenda: { summary: '', topics: [], questions: [] },
+    followup: { summary: '', steps: [], questions: [] },
+    history: [], transcript: [], createdAt: new Date().toISOString()
+  };
+}
+
+// Fills in fields added after a record was first saved, so older users keep working.
+export function normalizeUser(user) {
+  const base = freshUser();
+  const out = { ...base, ...(user || {}) };
+  out.profile = { ...base.profile, ...(out.profile || {}) };
+  out.agenda = { ...base.agenda, ...(out.agenda || {}) };
+  out.followup = { ...base.followup, ...(out.followup || {}) };
+  for (const k of ['cycleStarts', 'symptoms', 'checkins', 'preNotes', 'postNotes', 'history', 'transcript']) if (!Array.isArray(out[k])) out[k] = [];
+  return out;
 }
 
 export function localDate(timeZone, d = new Date()) {
@@ -170,6 +196,12 @@ export function runTool(user, name, input, today) {
     user.preNotes.push(entry);
     return { ok: true, saved: entry };
   }
+  if (name === 'add_after_visit_note') {
+    if (!input.text) return { ok: false, error: 'text is required' };
+    const entry = { id: newId(), date: today, text: String(input.text).slice(0, 1000) };
+    user.postNotes.push(entry);
+    return { ok: true, saved: entry };
+  }
   if (name === 'get_my_history') {
     const days = Number(input.days) > 0 ? Math.min(Number(input.days), 365) : 30;
     const from = new Date(new Date(today + 'T12:00:00Z').getTime() - days * 86400000).toISOString().slice(0, 10);
@@ -179,11 +211,12 @@ export function runTool(user, name, input, today) {
       period_starts: [...user.cycleStarts].sort((a, b) => a.date.localeCompare(b.date)),
       symptoms: recent(user.symptoms),
       checkins: recent(user.checkins).map(({ id, date, feeling }) => ({ id, date, feeling })),
-      visit_notes: user.preNotes
+      visit_notes: user.preNotes,
+      after_visit_notes: user.postNotes
     };
   }
   if (name === 'delete_entry') {
-    const key = { symptom: 'symptoms', period_start: 'cycleStarts', checkin: 'checkins', visit_note: 'preNotes' }[input.kind];
+    const key = { symptom: 'symptoms', period_start: 'cycleStarts', checkin: 'checkins', visit_note: 'preNotes', after_note: 'postNotes' }[input.kind];
     if (!key) return { ok: false, error: 'unknown kind' };
     const before = user[key].length;
     user[key] = user[key].filter(x => x.id !== input.id);
@@ -199,7 +232,7 @@ function contextNote(user, today) {
     user.profile.name ? `Their name: ${user.profile.name}.` : 'New person: no name saved yet.',
     lastPeriod ? `Last period start: ${lastPeriod.date}.` : 'No period start saved yet.',
     user.profile.appointmentDate ? `Next appointment: ${user.profile.appointmentDate}${user.profile.clinician ? ' with ' + user.profile.clinician : ''}.` : '',
-    `Saved so far: ${user.symptoms.length} symptoms, ${user.checkins.length} check-ins, ${user.preNotes.length} visit notes.`
+    `Saved so far: ${user.symptoms.length} symptoms, ${user.checkins.length} check-ins, ${user.preNotes.length} visit notes, ${user.postNotes.length} after-visit notes.`
   ];
   return lines.filter(Boolean).join(' ');
 }
@@ -208,6 +241,7 @@ function contextNote(user, today) {
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
   if (text.trim().toUpperCase() === 'DELETE ALL') {
+    for (const k of Object.keys(user)) delete user[k];
     Object.assign(user, freshUser());
     return 'Done. I erased everything I had saved for you. Text me anytime to start fresh.';
   }

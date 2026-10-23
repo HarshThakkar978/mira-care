@@ -2,32 +2,33 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="theme-color" content="#f7f7f3">
-<title>Mira Care — Your visit companion</title>
-<link rel="stylesheet" href="styles.css">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<meta name="theme-color" content="#f7f7f3" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Mira">
+<meta name="description" content="Text Mira how you feel. She keeps track of your cycle and symptoms and helps you prepare for appointments.">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="/icons/icon-192.png">
+<title>Mira Care</title>
+<link rel="stylesheet" href="/styles.css">
 </head>
 <body>
-<div class="shell">
-  <aside class="sidebar">
-    <div class="brand"><div class="brand-mark">m</div><div><div class="brand-name">mira care</div><span class="brand-sub">your visit companion</span></div></div>
-    <nav aria-label="Main navigation"><div class="nav-label">Your space</div><div class="nav-list">
-      <button class="nav-item active" data-route="checkin"><span class="nav-icon">✳</span><span class="nav-text">Check-in</span></button>
-      <button class="nav-item" data-route="home"><span class="nav-icon">⌂</span><span class="nav-text">Dashboard</span></button>
-      <button class="nav-item" data-route="tracker"><span class="nav-icon">◌</span><span class="nav-text">Cycle</span></button>
-      <button class="nav-item" data-route="prep"><span class="nav-icon">✎</span><span class="nav-text">Visit prep</span></button>
-      <button class="nav-item" data-route="agenda"><span class="nav-icon">▤</span><span class="nav-text">Agenda</span></button>
-      <button class="nav-item" data-route="after"><span class="nav-icon">↗</span><span class="nav-text">After visit</span></button>
-    </div></nav>
-    <div class="side-bottom"><div class="local-card"><div class="local-title"><span id="aiDot" class="status-dot"></span><span id="aiStatus">AI drafting is off</span></div><div class="local-copy" id="aiStatusCopy">Your notes stay in this browser. This preview does not send them to an AI service.</div></div><div class="privacy-small">Saved on this device only. No account, shared database, or AI connection is active.</div></div>
-  </aside>
-  <main class="main">
-    <header class="topbar"><div class="crumb" id="breadcrumb">Your space / Overview</div><div class="top-actions"><span class="save-state" id="saveState">Saved on this device</span><button class="icon-button" data-action="export">Export my data</button><button class="icon-button" data-action="privacy">Privacy</button></div></header>
-    <div class="content" id="view"></div>
-  </main>
+<div class="app">
+  <nav class="nav" aria-label="Main">
+    <div class="brand"><span class="brand-mark">m</span><span class="brand-name">mira care</span></div>
+    <button class="nav-item" data-route="chat"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 3c5 0 9 3.4 9 7.6s-4 7.6-9 7.6c-.9 0-1.8-.1-2.6-.3L5 20l.9-3.6C4.1 15 3 13 3 10.6 3 6.4 7 3 12 3z"/></svg></span><span class="nav-text">Chat</span></button>
+    <button class="nav-item" data-route="today"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M4 13h4v7H4zM10 8h4v12h-4zM16 4h4v16h-4z"/></svg></span><span class="nav-text">Today</span></button>
+    <button class="nav-item" data-route="cycle"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4a8 8 0 0 1 0 16"/></svg></span><span class="nav-text">Cycle</span></button>
+    <button class="nav-item" data-route="visit"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V3h6v1M8.5 10h7M8.5 14h7M8.5 18h4"/></svg></span><span class="nav-text">Visits</span></button>
+    <button class="nav-item" data-route="me"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="8.5" r="3.8"/><path d="M4.5 20c1.2-3.8 4-5.5 7.5-5.5s6.3 1.7 7.5 5.5"/></svg></span><span class="nav-text">Me</span></button>
+  </nav>
+  <main id="view" class="view" tabindex="-1"></main>
 </div>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<div id="modalRoot"></div>
-<script src="app.js"></script>
+<script src="/app.js"></script>
 </body>
 </html>
