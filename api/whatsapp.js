@@ -9,7 +9,7 @@ import { getUser, saveUser, firstTimeSeen, storeConfigured } from './_lib/store.
 
 const env = name => process.env[name] || '';
 const GRAPH = () => `https://graph.facebook.com/${env('WHATSAPP_API_VERSION') || 'v23.0'}/${env('WHATSAPP_PHONE_NUMBER_ID')}/messages`;
-const MODEL = () => env('MIRA_MODEL') || 'claude-opus-5-5';
+const MODEL = () => env('MIRA_MODEL') || 'claude-haiku-5-5';
 
 export async function GET(request) {
   const q = new URL(request.url).searchParams;
