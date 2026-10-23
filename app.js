@@ -15,7 +15,7 @@
   let deviceId = store.get(ID_KEY);
   if (!deviceId || !ID_RE.test(deviceId)) { deviceId = newId(); store.set(ID_KEY, deviceId); }
 
-  const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, transcript: [] });
+  const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, reminder: { enabled: false, hour: 20, devices: 0 }, transcript: [] });
   let user = (() => { try { return { ...emptyUser(), ...JSON.parse(store.get(CACHE_KEY) || '{}') }; } catch { return emptyUser(); } })();
   const saveCache = () => store.set(CACHE_KEY, JSON.stringify(user));
 
@@ -34,6 +34,10 @@
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
   const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+  const hourLabel = h => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const b64ToBytes = s => { const b = atob((s + '='.repeat((4 - s.length % 4) % 4)).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(b, c => c.charCodeAt(0)); };
   let toastTimer;
   function toast(msg) { const el = $('#toast'); el.textContent = msg; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => el.classList.remove('show'), 2600); }
   const debounce = (fn, ms) => { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; };
@@ -97,8 +101,7 @@
     return list.map(t => `<button class="chip" data-chip="${esc(t)}">${esc(t)}</button>`).join('');
   }
   function renderChat() {
-    const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-    const tip = ios && !isStandalone() && !store.get(TIP_KEY)
+    const tip = isIOS() && !isStandalone() && !store.get(TIP_KEY)
       ? `<div class="install no-print"><span>📲</span><span><b>Keep Mira on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
     return `<section class="chat">
       <header class="chat-head"><div class="avatar">m</div><div class="chat-name">Mira</div><div class="chat-status">Your perimenopause companion</div></header>
@@ -166,6 +169,7 @@
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'long', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
       <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Mira if anything changes.' : 'Text Mira, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
+      ${user.reminder && user.reminder.enabled ? '' : `<button class="btn ghost no-print" data-route="me" style="width:100%;margin:-4px 0 14px">🔔 Get a gentle daily check-in reminder</button>`}
       <div class="grid three">
         <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Mira when it starts'}</div></div>
         <div class="card stat"><div class="stat-label">Average gap</div><div class="stat-value">${avg ? avg + ' days' : '—'}</div><div class="stat-note">${gaps.length ? `Across ${plural(gaps.length + 1, 'period')} · last ${gaps[gaps.length - 1]} days` : 'Needs two period starts'}</div></div>
@@ -311,6 +315,7 @@
       <div class="page-head"><div class="eyebrow">Settings</div><h1 class="title">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${counts.map(([n, w]) => plural(n, w)).join(' · ')}</p></div>
       <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Mira calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
       ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Mira to your Home Screen</h2><p class="card-sub" style="margin:0">On iPhone: open this site in <b>Safari</b>, tap <b>Share</b> (the square with an arrow), then <b>Add to Home Screen</b>. Mira then opens straight into the chat, like an app.</p></div>`}
+      <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
       <div class="card"><h2 class="card-title">Use Mira on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
       <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
@@ -318,6 +323,34 @@
         <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
       <p class="note">Mira Care is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
     </div>`;
+  }
+
+  function reminderCard() {
+    const r = user.reminder || { enabled: false, hour: 20 };
+    if (!pushSupported() || (isIOS() && !isStandalone())) {
+      return `<p class="card-sub" style="margin:0">${isIOS() ? 'iPhone only allows reminders for apps on your Home Screen. Add Mira to your Home Screen (above), open it from there, and turn this on.' : "This browser can't show notifications. Try Chrome, Edge or Safari, or add Mira to your Home Screen."}</p>`;
+    }
+    if (Notification.permission === 'denied') {
+      return `<p class="card-sub" style="margin:0">Notifications are blocked for Mira. Turn them on in your phone's Settings → Notifications → Mira (or in your browser's site settings), then come back here.</p>`;
+    }
+    const hours = Array.from({ length: 18 }, (_, i) => i + 6).map(h => `<option value="${h}" ${h === r.hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('');
+    return `<p class="card-sub">A gentle nudge once a day to check in with Mira. It's skipped on days you've already logged something.</p>
+      <div class="form-grid"><div class="field"><label for="remHour">Remind me around</label><select class="select" id="remHour" data-reminder-hour>${hours}</select></div></div>
+      <div class="row-wrap" style="margin-top:12px">${r.enabled
+        ? `<span class="pill">On · around ${hourLabel(r.hour)}</span><button class="btn small ghost" data-action="test-push">Send a test</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
+        : `<button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on daily reminder'}</button>`}</div>`;
+  }
+  async function enableReminders() {
+    // Ask for permission first, straight from the tap (iPhone requires that).
+    const perm = await Notification.requestPermission();
+    if (perm !== 'granted') throw new Error('Notifications were not allowed. You can allow them in Settings → Notifications → Mira.');
+    const reg = await navigator.serviceWorker.ready;
+    const { publicKey } = await api('push-key', {}, { keepUser: true });
+    let sub = await reg.pushManager.getSubscription();
+    if (sub) { try { await sub.unsubscribe(); } catch {} }
+    sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
+    const hour = Number($('#remHour')?.value || user.reminder?.hour || 20);
+    await api('reminder', { enabled: true, hour, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, subscription: sub.toJSON() });
   }
 
   // ---------- Agenda editing ----------
@@ -372,6 +405,13 @@
     else if (act === 'share-agenda') { if (navigator.share) navigator.share({ title: 'My visit agenda', text: agendaText() }).catch(() => {}); else copy(agendaText(), 'Agenda copied'); }
     else if (act === 'print') window.print();
     else if (act === 'copy-link') copy(a.dataset.link, 'Private link copied');
+    else if (act === 'reminder-on') {
+      ui.reminderBusy = true; render();
+      try { await enableReminders(); toast(`Reminder on: around ${hourLabel(user.reminder.hour)} each day`); } catch (err) { toast(err.message); }
+      ui.reminderBusy = false; render();
+    }
+    else if (act === 'reminder-off') guarded(() => api('reminder', { enabled: false }), 'Daily reminder turned off');
+    else if (act === 'test-push') guarded(async () => { const d = await api('test-push'); if (!d.sent) throw new Error('No device to send to. Turn the reminder off and on again.'); }, 'Test sent. It should arrive in a few seconds.');
     else if (act === 'export') {
       const blob = new Blob([JSON.stringify(user, null, 2)], { type: 'application/json' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `mira-care-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
@@ -410,6 +450,7 @@
   document.addEventListener('change', e => {
     const el = e.target;
     if (el.dataset.profile) guarded(() => tool('save_profile', { [el.dataset.profile]: el.value }), 'Saved');
+    if (el.matches('[data-reminder-hour]') && user.reminder && user.reminder.enabled) guarded(() => api('reminder', { hour: Number(el.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone }), `Reminder moved to around ${hourLabel(Number(el.value))}`);
   });
 
   // ---------- Start ----------

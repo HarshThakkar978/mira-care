@@ -5,6 +5,7 @@
   "engines": { "node": "22.x" },
   "dependencies": {
     "@anthropic-ai/sdk": "latest",
-    "@vercel/functions": "latest"
+    "@vercel/functions": "latest",
+    "web-push": "^3.6.7"
   }
 }

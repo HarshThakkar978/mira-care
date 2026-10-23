@@ -6,7 +6,9 @@ A perimenopause companion you text. Open the app (or add it to your iPhone Home 
 - **Today**: days since your last period, average gap between periods, next appointment, a 30-day symptom strip and your most frequent symptoms
 - **Cycle**: month calendar of period starts and symptoms; tap a day to view, add or remove entries
 - **Visits**: notes to bring up, an editable agenda Mira drafts from your data, after-visit notes and a follow-up list
-- **Me**: your name, add-to-Home-Screen help, a private link to open Mira on another device, export and erase
+- **Me**: your name, a daily reminder notification at an hour you pick, add-to-Home-Screen help, a private link to open Mira on another device, export and erase
+
+Daily reminders use web push (`api/_lib/push.js`). Vercel's Hobby plan only allows once-a-day cron jobs, so `vercel.json` defines 24 daily jobs, one per hour, that all call `/api/reminders`. It sends each person one reminder after their chosen local hour, and skips days they've already logged something. On iPhone, notifications only work once Mira is added to the Home Screen.
 
 Data lives in Upstash Redis, keyed by a random device id stored in the browser (`/api/app`). Entries saved by the older browser-only version are imported automatically the first time the app loads.
 

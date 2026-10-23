@@ -30,3 +30,10 @@ export async function saveUser(phone, user) {
 export async function firstTimeSeen(messageId) {
   return (await redis(['SET', `mira:seen:${messageId}`, '1', 'NX', 'EX', 86400])) === 'OK';
 }
+
+// Small helpers for reminders: a set of people who turned reminders on, and plain key/value.
+export const addReminderUser = key => redis(['SADD', 'mira:reminders', key]);
+export const removeReminderUser = key => redis(['SREM', 'mira:reminders', key]);
+export const reminderUsers = async () => (await redis(['SMEMBERS', 'mira:reminders'])) || [];
+export const getValue = async key => { const raw = await redis(['GET', key]); return raw ? JSON.parse(raw) : null; };
+export const setValue = (key, value) => redis(['SET', key, JSON.stringify(value)]);

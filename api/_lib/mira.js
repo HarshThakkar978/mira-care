@@ -130,6 +130,7 @@ export function freshUser() {
     cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [],
     agenda: { summary: '', topics: [], questions: [] },
     followup: { summary: '', steps: [], questions: [] },
+    reminder: { enabled: false, hour: 20, tz: '', subscriptions: [], lastSent: '' },
     history: [], transcript: [], createdAt: new Date().toISOString()
   };
 }
@@ -141,6 +142,8 @@ export function normalizeUser(user) {
   out.profile = { ...base.profile, ...(out.profile || {}) };
   out.agenda = { ...base.agenda, ...(out.agenda || {}) };
   out.followup = { ...base.followup, ...(out.followup || {}) };
+  out.reminder = { ...base.reminder, ...(out.reminder || {}) };
+  if (!Array.isArray(out.reminder.subscriptions)) out.reminder.subscriptions = [];
   for (const k of ['cycleStarts', 'symptoms', 'checkins', 'preNotes', 'postNotes', 'history', 'transcript']) if (!Array.isArray(out[k])) out[k] = [];
   return out;
 }

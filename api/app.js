@@ -3,7 +3,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { runTool, freshUser, normalizeUser } from './_lib/mira.js';
 import { miraReply, loadUser, storeUser, today, MODEL } from './_lib/respond.js';
-import { storeConfigured } from './_lib/store.js';
+import { storeConfigured, addReminderUser, removeReminderUser } from './_lib/store.js';
+import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Mira uses), so manual entries and chat entries stay in one place.
@@ -11,7 +12,11 @@ const APP_TOOLS = new Set(['log_symptoms', 'log_period_start', 'log_feeling', 's
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 // What the app gets back: everything except Mira's internal short-term memory.
-const view = user => { const { history, ...rest } = user; return rest; };
+const view = user => {
+  const { history, reminder, ...rest } = user;
+  const { subscriptions, ...r } = reminder || {};
+  return { ...rest, reminder: { ...r, devices: (subscriptions || []).length } };
+};
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
 export async function POST(request) {
@@ -65,10 +70,36 @@ export async function POST(request) {
       return json({ user: view(merged), imported: true });
     }
 
+    if (action === 'push-key') return json({ publicKey: (await vapidKeys()).publicKey });
+
+    if (action === 'reminder') {
+      // Turn the daily reminder on/off, change its hour, or register this device's push subscription.
+      const r = user.reminder;
+      if (typeof body.enabled === 'boolean') r.enabled = body.enabled;
+      if (Number.isInteger(body.hour) && body.hour >= 0 && body.hour <= 23) r.hour = body.hour;
+      if (typeof body.tz === 'string' && body.tz.length < 64) r.tz = body.tz;
+      const sub = body.subscription;
+      if (sub && typeof sub.endpoint === 'string' && sub.keys) r.subscriptions = [...r.subscriptions.filter(x => x.endpoint !== sub.endpoint), { endpoint: sub.endpoint, keys: sub.keys }].slice(-5);
+      if (body.removeEndpoint) r.subscriptions = r.subscriptions.filter(x => x.endpoint !== body.removeEndpoint);
+      // If today's hour has already passed when turning it on, start tomorrow instead of firing right away.
+      const now = localNow(r.tz);
+      if (body.enabled === true || Number.isInteger(body.hour)) r.lastSent = now.hour >= r.hour ? now.date : '';
+      await storeUser(key, user);
+      if (r.enabled && r.subscriptions.length) await addReminderUser(key); else await removeReminderUser(key);
+      return json({ user: view(user) });
+    }
+
+    if (action === 'test-push') {
+      const sent = await sendToUser(user, { title: 'Mira test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' });
+      await storeUser(key, user);
+      return json({ sent, user: view(user) });
+    }
+
     if (action === 'draft') return json({ user: view(await draft(key, user, body.mode === 'after' ? 'after' : 'prep')) });
 
     if (action === 'reset') {
       await storeUser(key, freshUser());
+      await removeReminderUser(key);
       return json({ user: view(freshUser()) });
     }
 

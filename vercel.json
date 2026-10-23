@@ -3,13 +3,129 @@
     {
       "source": "/(.*)",
       "headers": [
-        {"key": "X-Content-Type-Options", "value": "nosniff"},
-        {"key": "X-Frame-Options", "value": "DENY"},
-        {"key": "Referrer-Policy", "value": "no-referrer"},
-        {"key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()"},
-        {"key": "Content-Security-Policy", "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"},
-        {"key": "Cache-Control", "value": "no-store"}
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "no-referrer"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        },
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "no-store"
+        }
       ]
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/reminders?h=0",
+      "schedule": "0 0 * * *"
+    },
+    {
+      "path": "/api/reminders?h=1",
+      "schedule": "0 1 * * *"
+    },
+    {
+      "path": "/api/reminders?h=2",
+      "schedule": "0 2 * * *"
+    },
+    {
+      "path": "/api/reminders?h=3",
+      "schedule": "0 3 * * *"
+    },
+    {
+      "path": "/api/reminders?h=4",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/reminders?h=5",
+      "schedule": "0 5 * * *"
+    },
+    {
+      "path": "/api/reminders?h=6",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/reminders?h=7",
+      "schedule": "0 7 * * *"
+    },
+    {
+      "path": "/api/reminders?h=8",
+      "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/reminders?h=9",
+      "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/reminders?h=10",
+      "schedule": "0 10 * * *"
+    },
+    {
+      "path": "/api/reminders?h=11",
+      "schedule": "0 11 * * *"
+    },
+    {
+      "path": "/api/reminders?h=12",
+      "schedule": "0 12 * * *"
+    },
+    {
+      "path": "/api/reminders?h=13",
+      "schedule": "0 13 * * *"
+    },
+    {
+      "path": "/api/reminders?h=14",
+      "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/reminders?h=15",
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/reminders?h=16",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/reminders?h=17",
+      "schedule": "0 17 * * *"
+    },
+    {
+      "path": "/api/reminders?h=18",
+      "schedule": "0 18 * * *"
+    },
+    {
+      "path": "/api/reminders?h=19",
+      "schedule": "0 19 * * *"
+    },
+    {
+      "path": "/api/reminders?h=20",
+      "schedule": "0 20 * * *"
+    },
+    {
+      "path": "/api/reminders?h=21",
+      "schedule": "0 21 * * *"
+    },
+    {
+      "path": "/api/reminders?h=22",
+      "schedule": "0 22 * * *"
+    },
+    {
+      "path": "/api/reminders?h=23",
+      "schedule": "0 23 * * *"
     }
   ]
 }
