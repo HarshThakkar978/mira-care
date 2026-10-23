@@ -20,9 +20,9 @@ export async function POST(request) {
   const body = (form.get('Body') || '').trim();
   // Reply from whichever Twilio number they messaged (the sandbox number differs per account).
   const to = form.get('To') || '';
-  // Answer Twilio right away (empty TwiML); the reply is sent separately once Mira has thought.
+  // Answer Twilio right away with an empty 200 (trial webhooks don't accept TwiML); the reply is sent separately via the API.
   if (from && sid) waitUntil(processMessage(from, to, sid, body, Number(form.get('NumMedia') || 0)).catch(e => console.error('mira error', e)));
-  return new Response('<Response></Response>', { headers: { 'Content-Type': 'text/xml' } });
+  return new Response(null, { status: 200 });
 }
 
 async function processMessage(from, to, sid, body, numMedia) {
