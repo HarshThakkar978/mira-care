@@ -15,7 +15,10 @@ A mobile-first, customer-only website for cycle and symptom notes and visit prep
 
 Text Mira on WhatsApp instead of opening the site. Mira uses Claude to understand messages like "hot flashes last night, maybe a 7" and saves them as structured symptoms, period starts, check-ins and visit notes.
 
-- `api/whatsapp.js` is the webhook Meta calls for every incoming message. Visit `/api/whatsapp` in a browser to see which settings are still missing.
+- `api/twilio.js` receives WhatsApp messages through Twilio (works with Twilio's free WhatsApp Sandbox, no business verification). Set the sandbox's "When a message comes in" URL to `https://mira-care.vercel.app/api/twilio`.
+- `api/whatsapp.js` is the same thing for Meta's WhatsApp Cloud API directly, which needs Meta business verification.
+- Visit `/api/twilio` or `/api/whatsapp` in a browser to see which settings are still missing.
+- `api/_lib/respond.js` loads a person's data, gets Mira's reply and saves it. Every channel calls it.
 - `api/_lib/mira.js` holds Mira's prompt, tools and conversation loop. It doesn't depend on the channel, so an iMessage bridge can reuse it later.
 - `api/_lib/store.js` saves each person's data (keyed by phone number) in Upstash Redis.
 

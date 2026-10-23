@@ -2,14 +2,12 @@
 // GET  /api/whatsapp  → Meta's one-time webhook check (and a status page for us)
 // POST /api/whatsapp  → incoming messages; Mira replies through the Graph API
 import crypto from 'node:crypto';
-import Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
-import { handleIncoming, freshUser, localDate } from './_lib/mira.js';
-import { getUser, saveUser, firstTimeSeen, storeConfigured } from './_lib/store.js';
+import { miraReply, MODEL } from './_lib/respond.js';
+import { firstTimeSeen, storeConfigured } from './_lib/store.js';
 
 const env = name => process.env[name] || '';
 const GRAPH = () => `https://graph.facebook.com/${env('WHATSAPP_API_VERSION') || 'v23.0'}/${env('WHATSAPP_PHONE_NUMBER_ID')}/messages`;
-const MODEL = () => env('MIRA_MODEL') || 'claude-haiku-5-5';
 
 export async function GET(request) {
   const q = new URL(request.url).searchParams;
@@ -50,18 +48,7 @@ async function processMessage(m) {
     return;
   }
   await markReadAndTyping(m.id);
-
-  const user = (await getUser(phone)) || freshUser();
-  const client = new Anthropic();
-  const model = MODEL();
-  const reply = await handleIncoming(user, m.text.body, localDate(env('MIRA_TIMEZONE') || 'America/New_York'), {
-    model,
-    effort: env('MIRA_EFFORT') || 'low',
-    fallbacks: !model.startsWith('claude-haiku'),
-    claude: params => client.beta.messages.create(params)
-  });
-  await saveUser(phone, user);
-  await sendText(phone, reply);
+  await sendText(phone, await miraReply(phone, m.text.body));
 }
 
 async function graph(payload) {
