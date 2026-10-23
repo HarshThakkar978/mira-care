@@ -11,6 +11,16 @@ A mobile-first, customer-only website for cycle and symptom notes and visit prep
 - Responsive website navigation with a mobile bottom bar and large touch targets
 - Gemini and all network AI calls are disabled; the guided conversation is a deterministic local form
 
+## Mira on WhatsApp
+
+Text Mira on WhatsApp instead of opening the site. Mira uses Claude to understand messages like "hot flashes last night, maybe a 7" and saves them as structured symptoms, period starts, check-ins and visit notes.
+
+- `api/whatsapp.js` is the webhook Meta calls for every incoming message. Visit `/api/whatsapp` in a browser to see which settings are still missing.
+- `api/_lib/mira.js` holds Mira's prompt, tools and conversation loop. It doesn't depend on the channel, so an iMessage bridge can reuse it later.
+- `api/_lib/store.js` saves each person's data (keyed by phone number) in Upstash Redis.
+
+Settings are listed in [`.env.example`](.env.example). Text **DELETE ALL** to Mira to erase your saved data.
+
 ## Run locally
 
 From the project folder:

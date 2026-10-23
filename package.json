@@ -1,0 +1,10 @@
+{
+  "name": "mira-care",
+  "private": true,
+  "type": "module",
+  "engines": { "node": "22.x" },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "@vercel/functions": "latest"
+  }
+}
