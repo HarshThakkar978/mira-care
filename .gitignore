@@ -9,3 +9,6 @@
 # OS and editor files
 .DS_Store
 *.log
+
+# Local Claude Code settings
+.claude/

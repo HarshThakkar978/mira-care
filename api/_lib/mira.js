@@ -307,7 +307,7 @@ function describeAction(name, input, result, at) {
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp' }
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
   if (text.trim().toUpperCase() === 'DELETE ALL') {
@@ -333,9 +333,12 @@ export async function handleIncoming(user, text, today, deps) {
       messages
     };
     if (deps.fallbacks) { params.betas = ['server-side-fallback-2026-07-01']; params.fallbacks = 'default'; }
+    if (deps.onRound) deps.onRound(); // lets a streaming client drop text from a previous tool round
     const response = await deps.claude(params);
 
     if (response.stop_reason === 'refusal') { reply = "Sorry, I can't help with that one. I'm here for your symptoms, cycle and visit notes."; break; }
+    // A reply cut off at max_tokens may hold a half-written tool call; don't run it.
+    if (response.stop_reason === 'max_tokens') { reply = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim(); break; }
     // Pass the whole content back unchanged (keeps thinking blocks valid within this turn).
     messages.push({ role: 'assistant', content: response.content });
     const toolUses = response.content.filter(b => b.type === 'tool_use');

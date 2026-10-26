@@ -12,10 +12,11 @@ const APP_TOOLS = new Set(['log_symptoms', 'log_period_start', 'log_feeling', 's
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 // What the app gets back: everything except Mira's internal short-term memory.
+const PAGE = 80; // chat messages sent with each response; older ones load on request
 const view = user => {
-  const { history, actionLog, reminder, ...rest } = user;
+  const { history, actionLog, reminder, transcript = [], ...rest } = user;
   const { subscriptions, ...r } = reminder || {};
-  return { ...rest, reminder: { ...r, devices: (subscriptions || []).length } };
+  return { ...rest, transcript: transcript.slice(-PAGE), transcriptTotal: transcript.length, reminder: { ...r, devices: (subscriptions || []).length } };
 };
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
@@ -33,11 +34,20 @@ export async function POST(request) {
     if (action === 'chat') {
       const text = String(body.text || '').trim().slice(0, 2000);
       if (!text) return json({ error: 'Empty message' }, 400);
+      if (body.stream) return streamChat(key, text);
       const { reply, user } = await miraReply(key, text, 'app');
       return json({ reply, user: view(user) });
     }
 
     const user = await loadUser(key);
+
+    if (action === 'transcript') {
+      // Older chat messages: the PAGE before the `loaded` most recent ones.
+      const loaded = Math.max(0, Number(body.loaded) || 0), end = Math.max(0, user.transcript.length - loaded);
+      return json({ messages: user.transcript.slice(Math.max(0, end - PAGE), end), remaining: Math.max(0, end - PAGE) });
+    }
+
+    if (action === 'insight') return json({ insight: await weeklyInsight(key, user) });
 
     if (action === 'tool') {
       if (!APP_TOOLS.has(body.name)) return json({ error: 'Unknown tool' }, 400);
@@ -108,6 +118,47 @@ export async function POST(request) {
     console.error('app error', action, e);
     return json({ error: 'Something went wrong. Please try again.' }, 500);
   }
+}
+
+// Streams Mira's reply as newline-separated JSON: {t:'delta',text} … then {t:'done',reply,user} (or {t:'error'}).
+function streamChat(key, text) {
+  const enc = new TextEncoder();
+  const body = new ReadableStream({
+    async start(controller) {
+      const send = obj => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'));
+      try {
+        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }) });
+        send({ t: 'done', reply, user: view(user) });
+      } catch (e) {
+        console.error('chat stream error', e);
+        send({ t: 'error', error: 'Mira could not reply just now. Please try again.' });
+      }
+      controller.close();
+    }
+  });
+  return new Response(body, { headers: { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store, no-transform' } });
+}
+
+// A short, friendly read of the last 7 days for the Today screen. Cached until the entries change.
+async function weeklyInsight(key, user) {
+  const since = new Date(Date.now() - 6 * 86400000).toISOString().slice(0, 10);
+  const symptoms = user.symptoms.filter(s => s.date >= since), checkins = user.checkins.filter(c => c.date >= since), periods = user.cycleStarts.filter(c => c.date >= since);
+  if (symptoms.length + checkins.length + periods.length < 2) return null;
+  const sig = [...symptoms, ...checkins, ...periods].map(x => `${x.id}:${x.severity || ''}`).sort().join(',');
+  if (user.insight && user.insight.sig === sig && user.insight.date === today()) return user.insight.text;
+  const client = new Anthropic();
+  const response = await client.messages.create({
+    model: MODEL(),
+    max_tokens: 2000,
+    output_config: { effort: 'low' },
+    messages: [{ role: 'user', content: `Write one or two short sentences (under 40 words) for this person about their last 7 days, noticing patterns: which symptoms came up most, how strong, any link to sleep or their period, how they've been feeling. Warm, plain, second person ("You've…"). Don't diagnose, explain causes or give advice. Only mention their clinician if something was clearly strong or frequent. Reply with just the sentences.\n\n<data>${JSON.stringify({ today: today(), symptoms: symptoms.map(({ date, name, severity, impact, notes }) => ({ date, name, severity, impact, notes })), checkins: checkins.map(({ date, feeling }) => ({ date, feeling })), period_starts: periods.map(p => p.date) })}</data>` }]
+  });
+  if (response.stop_reason === 'refusal') return null;
+  const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('').trim().slice(0, 400);
+  if (!text) return null;
+  user.insight = { date: today(), sig, text };
+  await storeUser(key, user);
+  return text;
 }
 
 const cleanList = list => (Array.isArray(list) ? list : []).map(x => String(x || '').slice(0, 500)).slice(0, 30);

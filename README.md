@@ -2,10 +2,10 @@
 
 A perimenopause companion you text. Open the app (or add it to your iPhone Home Screen) and it goes straight to an iMessage-style chat with Mira, who uses Claude to log how you feel, period starts and symptoms from plain messages. The other tabs show what you've logged:
 
-- **Chat**: talk to Mira; quick replies for common check-ins
-- **Today**: days since your last period, average gap between periods, next appointment, a 30-day symptom strip and your most frequent symptoms
+- **Chat**: talk to Mira (replies stream in word by word); quick replies, and a ➕ quick-log sheet for feelings, symptoms and period starts in two taps
+- **Today**: a short weekly insight from Mira, days since your last period, average gap between periods, next appointment, a 30-day symptom strip and your most frequent symptoms
 - **Cycle**: month calendar of period starts and symptoms; tap a day to view, add or remove entries
-- **Visits**: notes to bring up, an editable agenda Mira drafts from your data, after-visit notes and a follow-up list
+- **Visits**: a printable doctor summary (save as PDF), notes to bring up, an editable agenda Mira drafts from your data, after-visit notes and a follow-up list
 - **Me**: your name, a daily reminder notification at an hour you pick, add-to-Home-Screen help, a private link to open Mira on another device, export and erase
 
 Daily reminders use web push (`api/_lib/push.js`). Vercel's Hobby plan only allows once-a-day cron jobs, so `vercel.json` defines 24 daily jobs, one per hour, that all call `/api/reminders`. It sends each person one reminder after their chosen local hour, and skips days they've already logged something. On iPhone, notifications only work once Mira is added to the Home Screen.
@@ -30,6 +30,13 @@ Settings are listed in [`.env.example`](.env.example). Text **DELETE ALL** to Mi
 ## Run locally
 
 The app needs the `/api` functions, so run it with the Vercel CLI (`vercel dev`) after linking the project and pulling its environment variables.
+
+## Developer tools (`dev/`, not deployed)
+
+- `sh dev/syntax-check.sh`: syntax-checks all JavaScript using macOS's built-in JavaScriptCore.
+- `jsc -m dev/mira-logic.test.mjs` (or `node dev/mira-logic.test.mjs`): tests Mira's conversation logic with a fake Claude.
+- `SEED=1 python3 dev/mock-server.py . 8790`: runs the app locally with a fake backend and sample data.
+- `python3 dev/replay.py`: replays sample conversations against the live Mira, then erases them.
 
 ## Deploy to Vercel
 
