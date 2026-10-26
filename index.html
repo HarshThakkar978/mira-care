@@ -3,8 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
-<meta name="theme-color" content="#f7f7f3" media="(prefers-color-scheme: light)">
-<meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#f7f7f3" id="themeColor">
+<script>
+  // Light by default; "dark" or "system" if chosen in Me → Appearance. Runs before the page paints, so there's no flash.
+  (function () {
+    var t = 'light';
+    try { t = localStorage.getItem('mira-theme') || 'light'; } catch (e) {}
+    document.documentElement.setAttribute('data-theme', t);
+    var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    document.getElementById('themeColor').setAttribute('content', dark ? '#000000' : '#f7f7f3');
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">

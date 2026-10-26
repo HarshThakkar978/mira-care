@@ -1,6 +1,6 @@
 (() => {
   // ---------- Storage & identity ----------
-  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded';
+  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded', THEME_KEY = 'mira-theme';
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -404,6 +404,7 @@
       <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Mira calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
       ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Mira to your Home Screen</h2>${installHelp()}</div>`}
       <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
+      <div class="card"><h2 class="card-title">🎨 Appearance</h2><p class="card-sub">Light, dark, or follow your phone's setting.</p>${themeSeg()}</div>
       <div class="card"><h2 class="card-title">Use Mira on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
       <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
@@ -442,6 +443,18 @@
     const hour = Number($('#remHour')?.value || user.reminder?.hour || 20);
     await api('reminder', { enabled: true, hour, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, subscription: sub.toJSON() });
   }
+
+  // ---------- Appearance (light by default; index.html applies it before the first paint) ----------
+  const THEMES = [['light', '☀️ Light'], ['dark', '🌙 Dark'], ['system', '📱 Match phone']];
+  const currentTheme = () => store.get(THEME_KEY) || 'light';
+  function applyTheme(t) {
+    store.set(THEME_KEY, t);
+    document.documentElement.setAttribute('data-theme', t);
+    const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    $('#themeColor')?.setAttribute('content', dark ? '#000000' : '#f7f7f3');
+  }
+  matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (currentTheme() === 'system') applyTheme('system'); });
+  const themeSeg = () => `<div class="seg" role="radiogroup" aria-label="Appearance" style="margin:0">${THEMES.map(([k, l]) => `<button role="radio" aria-checked="${currentTheme() === k}" class="${currentTheme() === k ? 'on' : ''}" data-theme-pick="${k}">${l}</button>`).join('')}</div>`;
 
   // ---------- Install help ----------
   let installPrompt = null; // Chrome/Android offer their own install dialog; we keep it for an "Install" button
@@ -505,7 +518,8 @@
     const body = {
       meet: `<div class="ob-art"><div class="avatar big">m</div></div><h2 id="sheetTitle" class="ob-title">Meet Mira</h2>
         <p class="ob-text">Text Mira how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
-        <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>`,
+        <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
+        <p class="ob-hint">Prefer dark mode? Pick it here, or anytime in <b>Me → Appearance</b>.</p>${themeSeg()}`,
       install: `<div class="ob-art">📲</div><h2 id="sheetTitle" class="ob-title">Keep Mira one tap away</h2>${installHelp()}`,
       remind: `<div class="ob-art">🔔</div><h2 id="sheetTitle" class="ob-title">A gentle daily nudge</h2>
         <p class="ob-text">Mira can remind you once a day to check in. It's skipped on days you've already logged something.</p>
@@ -573,6 +587,8 @@
     if (chip) { sendMessage(chip.dataset.chip); return; }
     const day = e.target.closest('[data-day]');
     if (day) { ui.selDay = day.dataset.day; ui.showSymForm = false; render(); return; }
+    const tp = e.target.closest('[data-theme-pick]');
+    if (tp) { applyTheme(tp.dataset.themePick); if (ui.sheet) renderSheet(); else render(); return; }
     const vt = e.target.closest('[data-visit]');
     if (vt) { ui.visitTab = vt.dataset.visit; render(); return; }
     if (ui.log && ui.sheet === 'log') {
