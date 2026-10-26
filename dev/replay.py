@@ -19,7 +19,7 @@ SCENARIOS = {
                  "yeah I haven't been sleeping well, keep waking up hot",
                  "ok thanks, that's all for now"],
     # Two earlier tired days are saved first, so Mira should connect today's message to them.
-    "tired_again": [("setup", "log_symptoms", {"days_ago": 2, "symptoms": [{"name": "fatigue", "severity": 6}]}),
+    "tiredagain": [("setup", "log_symptoms", {"days_ago": 2, "symptoms": [{"name": "fatigue", "severity": 6}]}),
                     ("setup", "log_symptoms", {"days_ago": 1, "symptoms": [{"name": "fatigue", "severity": 7}, {"name": "night sweats", "severity": 6}]}),
                     "so tired again today ugh"],
 }
