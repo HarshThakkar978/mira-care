@@ -76,7 +76,7 @@
     const day = sameDay ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     return `<b>${day}</b> ${time}`;
   };
-  const WELCOME = "Hi, I'm Mira 💚 Text me how you're feeling, your period, or any symptoms, like you would a friend. I'll keep track of it all and help you get ready for appointments.\n\nWhat should I call you?";
+  const WELCOME = "Hi, I'm Mira 💚 Text me whenever you like: how you're feeling, a symptom, or when your period starts. I'll keep track of it all and help you get ready for appointments.";
 
   function threadHtml() {
     const msgs = [...(user.transcript || [])];
@@ -96,7 +96,7 @@
   function chipsHtml() {
     const first = !(user.transcript || []).length;
     const list = first
-      ? [user.profile.name ? `Hi Mira, it's ${user.profile.name}` : 'Hi Mira 👋', 'Feeling okay today', 'My period started today', 'I had hot flashes last night']
+      ? ['Feeling okay today', 'Rough day today', 'My period started today', 'I had hot flashes last night']
       : ['Feeling good today', 'Rough day today', 'My period started today', 'How has my week been?', 'Help me prep for my appointment'];
     return list.map(t => `<button class="chip" data-chip="${esc(t)}">${esc(t)}</button>`).join('');
   }

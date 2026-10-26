@@ -8,12 +8,12 @@ import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Mira uses), so manual entries and chat entries stay in one place.
-const APP_TOOLS = new Set(['log_symptoms', 'log_period_start', 'log_feeling', 'save_profile', 'add_visit_note', 'add_after_visit_note', 'delete_entry']);
+const APP_TOOLS = new Set(['log_symptoms', 'log_period_start', 'log_feeling', 'save_profile', 'add_visit_note', 'add_after_visit_note', 'update_entry', 'delete_entry']);
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
 // What the app gets back: everything except Mira's internal short-term memory.
 const view = user => {
-  const { history, reminder, ...rest } = user;
+  const { history, actionLog, reminder, ...rest } = user;
   const { subscriptions, ...r } = reminder || {};
   return { ...rest, reminder: { ...r, devices: (subscriptions || []).length } };
 };
@@ -33,7 +33,7 @@ export async function POST(request) {
     if (action === 'chat') {
       const text = String(body.text || '').trim().slice(0, 2000);
       if (!text) return json({ error: 'Empty message' }, 400);
-      const { reply, user } = await miraReply(key, text);
+      const { reply, user } = await miraReply(key, text, 'app');
       return json({ reply, user: view(user) });
     }
 

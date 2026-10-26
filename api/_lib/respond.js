@@ -12,7 +12,7 @@ export const loadUser = async key => normalizeUser(await getUser(key));
 export const storeUser = (key, user) => saveUser(key, user);
 
 // key: the person's storage id — phone digits on WhatsApp, "web-<device id>" in the app.
-export async function miraReply(key, text) {
+export async function miraReply(key, text, channel = 'whatsapp') {
   const user = await loadUser(key);
   const client = new Anthropic();
   const model = MODEL();
@@ -20,6 +20,7 @@ export async function miraReply(key, text) {
     model,
     effort: env('MIRA_EFFORT') || 'low',
     fallbacks: !model.startsWith('claude-haiku'),
+    channel,
     claude: params => client.beta.messages.create(params)
   });
   // Full chat log for the app to display (history above is only the short memory sent to Claude).
