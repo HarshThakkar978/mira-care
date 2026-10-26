@@ -37,3 +37,24 @@ export const removeReminderUser = key => redis(['SREM', 'mira:reminders', key]);
 export const reminderUsers = async () => (await redis(['SMEMBERS', 'mira:reminders'])) || [];
 export const getValue = async key => { const raw = await redis(['GET', key]); return raw ? JSON.parse(raw) : null; };
 export const setValue = (key, value) => redis(['SET', key, JSON.stringify(value)]);
+
+// For the admin page: every user's storage id ("web-…" or a phone number), and many records at once.
+export async function allUserIds() {
+  const ids = [];
+  let cursor = '0';
+  do {
+    const [next, keys] = await redis(['SCAN', cursor, 'MATCH', 'mira:user:*', 'COUNT', '500']);
+    cursor = String(next);
+    ids.push(...keys.map(k => k.slice('mira:user:'.length)));
+  } while (cursor !== '0' && ids.length < 10000);
+  return [...new Set(ids)];
+}
+export async function getUsers(ids) {
+  const out = [];
+  for (let i = 0; i < ids.length; i += 100) {
+    const batch = ids.slice(i, i + 100);
+    const raws = await redis(['MGET', ...batch.map(id => `mira:user:${id}`)]);
+    raws.forEach((raw, j) => { if (raw) out.push([batch[j], JSON.parse(raw)]); });
+  }
+  return out;
+}

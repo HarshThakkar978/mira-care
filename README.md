@@ -10,6 +10,8 @@ A perimenopause companion you text. Open the app (or add it to your iPhone Home 
 
 Daily reminders use web push (`api/_lib/push.js`). Vercel's Hobby plan only allows once-a-day cron jobs, so `vercel.json` defines 24 daily jobs, one per hour, that all call `/api/reminders`. It sends each person one reminder after their chosen local hour, and skips days they've already logged something. On iPhone, notifications only work once Mira is added to the Home Screen.
 
+**Admin page:** `/admin.html` shows every user, their entries and their full chat with Mira, plus usage stats. It's read-only and protected by the `ADMIN_PASSWORD` setting in Vercel.
+
 Data lives in Upstash Redis, keyed by a random device id stored in the browser (`/api/app`). Entries saved by the older browser-only version are imported automatically the first time the app loads.
 
 ## Mira on WhatsApp
