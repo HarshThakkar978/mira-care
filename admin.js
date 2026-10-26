@@ -1,5 +1,5 @@
 (() => {
-  // Mira admin: read-only view of users, their entries and chats. Password is checked by /api/admin.
+  // Mira admin: view users, their entries and chats, and delete test users. Password is checked by /api/admin.
   const PW_KEY = 'mira-admin-pw';
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -17,7 +17,7 @@
   const hourLabel = h => new Date(2000, 0, 1, h).toLocaleTimeString(undefined, { hour: 'numeric' });
 
   let pw = store.get(PW_KEY) || '';
-  let data = null, query = '';
+  let data = null, query = '', confirmId = '';
 
   async function api(action, extra = {}) {
     const res = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, action, ...extra }) });
@@ -50,7 +50,9 @@
       .map(([l, v]) => `<div class="card tile"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
     const bars = s.perDay.map(d => `<div class="col" data-tip="${esc(new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }))}: ${d.messages} message${d.messages === 1 ? '' : 's'}" aria-label="${esc(d.date)}: ${d.messages} messages"><div class="bar" style="height:${Math.round(d.messages / max * 100)}%"></div></div>`).join('');
     const xs = s.perDay.map((d, i) => `<span>${i % 2 === 0 || s.perDay.length < 8 ? new Date(d.date + 'T12:00:00').getDate() : ''}</span>`).join('');
+    const tests = data.users.filter(u => u.test).length;
     $('#root').innerHTML = `${top('<button class="btn small ghost" data-act="refresh">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>')}
+      ${tests ? `<div class="card row" style="margin-bottom:14px"><span class="small">🧪 ${tests} test user${tests === 1 ? '' : 's'} created by Claude while testing Mira.</span><button class="btn small danger" data-act="delete-test">${confirmId === 'TEST' ? 'Tap again to delete them' : 'Delete test users'}</button></div>` : ''}
       <div class="tiles">${tiles}</div>
       <div class="card"><div class="row"><h2 class="card-title">Messages to Mira per day</h2><span class="small muted">Last 14 days · hover a bar for the count</span></div>
         <div class="chart" role="img" aria-label="Messages per day over the last 14 days">${bars}</div><div class="chart-x">${xs}</div></div>
@@ -58,7 +60,7 @@
       <div class="card" style="padding:4px 8px;overflow-x:auto"><table>
         <thead><tr><th>User</th><th class="hide-sm">Channel</th><th>Last active</th><th class="num">Msgs</th><th class="num hide-sm">Symptoms</th><th class="num hide-sm">Periods</th><th class="hide-sm">Reminder</th><th class="hide-sm">Last message</th></tr></thead>
         <tbody id="rows"></tbody></table></div>
-      <p class="note">Read-only. Users are anonymous: the id is a random code from their device (App) or their phone number (WhatsApp).</p>`;
+      <p class="note">Users are anonymous: the id is a random code from their device (App) or their phone number (WhatsApp).</p>`;
     renderRows();
   }
 
@@ -67,7 +69,7 @@
     const list = data.users.filter(u => !q || [u.name, u.id, u.lastMessage].some(v => String(v).toLowerCase().includes(q)));
     $('#count').textContent = `${list.length} of ${data.users.length} users`;
     $('#rows').innerHTML = list.map(u => `<tr data-id="${esc(u.id)}" tabindex="0">
-      <td class="who"><strong>${esc(u.name || 'No name yet')}</strong><small>${esc(u.id.length > 22 ? u.id.slice(0, 22) + '…' : u.id)}</small></td>
+      <td class="who"><strong>${esc(u.name || 'No name yet')}${u.test ? ' <span class="pill">test</span>' : ''}</strong><small>${esc(u.id.length > 22 ? u.id.slice(0, 22) + '…' : u.id)}</small></td>
       <td class="hide-sm">${u.channel}</td><td title="${esc(fullTime(u.lastActive))}">${when(u.lastActive)}</td>
       <td class="num">${u.messages}</td><td class="num hide-sm">${u.symptoms}</td><td class="num hide-sm">${u.periods}</td>
       <td class="hide-sm">${u.reminder === null ? '<span class="muted">Off</span>' : hourLabel(u.reminder)}</td>
@@ -88,7 +90,7 @@
       return `${stamp}<div class="msg ${m.from === 'you' ? 'me' : 'them'} tail">${fmtMsg(m.text)}</div>`;
     }).join('') : '<p class="small muted">No chat messages yet.</p>';
     const ag = u.agenda, f = u.followup;
-    $('#root').innerHTML = `${top('<button class="btn small ghost" data-act="back">← All users</button>')}
+    $('#root').innerHTML = `${top(`<button class="btn small danger" data-act="delete" data-id="${esc(id)}">${confirmId === id ? 'Tap again to delete' : 'Delete user'}</button><button class="btn small ghost" data-act="back">← All users</button>`)}
       <div class="page-head" style="margin-bottom:14px"><div class="eyebrow">${s.channel} user</div><h1 class="title">${esc(s.name || 'No name yet')}</h1>
         <p class="sub">Joined ${when(s.createdAt)} · last active ${when(s.lastActive)} · ${s.messages} messages · <span class="small">${esc(id)}</span></p></div>
       <div class="detail-grid">
@@ -121,7 +123,19 @@
   document.addEventListener('click', e => {
     const row = e.target.closest('tr[data-id]'); if (row) { openUser(row.dataset.id); return; }
     const a = e.target.closest('[data-act]'); if (!a) return;
-    if (a.dataset.act === 'refresh' || a.dataset.act === 'back') load();
+    const act = a.dataset.act;
+    if (act !== 'delete' && act !== 'delete-test') confirmId = '';
+    if (act === 'delete-test') {
+      if (confirmId !== 'TEST') { confirmId = 'TEST'; renderList(); return; }
+      confirmId = ''; api('delete-test').then(load).catch(err => alertBack(err.message));
+    }
+    if (act === 'delete') {
+      // Two taps, so a stray click can't delete anyone.
+      const id = a.dataset.id;
+      if (confirmId !== id) { confirmId = id; a.textContent = 'Tap again to delete'; return; }
+      confirmId = ''; api('delete', { id }).then(load).catch(err => alertBack(err.message));
+    }
+    if (act === 'refresh' || act === 'back') load();
     if (a.dataset.act === 'logout') { pw = ''; store.del(PW_KEY); data = null; renderLogin(); }
   });
   document.addEventListener('keydown', e => { const row = e.target.closest && e.target.closest('tr[data-id]'); if (row && e.key === 'Enter') openUser(row.dataset.id); });

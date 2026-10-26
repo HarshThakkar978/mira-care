@@ -27,6 +27,11 @@ export async function saveUser(phone, user) {
 }
 
 // True the first time a message id is seen; WhatsApp sometimes delivers the same webhook twice.
+export async function deleteUser(id) {
+  await redis(['DEL', `mira:user:${id}`]);
+  await redis(['SREM', 'mira:reminders', id]);
+}
+
 export async function firstTimeSeen(messageId) {
   return (await redis(['SET', `mira:seen:${messageId}`, '1', 'NX', 'EX', 86400])) === 'OK';
 }

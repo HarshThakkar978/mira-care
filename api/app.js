@@ -3,7 +3,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { runTool, freshUser, normalizeUser } from './_lib/mira.js';
 import { miraReply, loadUser, storeUser, today, MODEL } from './_lib/respond.js';
-import { storeConfigured, addReminderUser, removeReminderUser } from './_lib/store.js';
+import { storeConfigured, addReminderUser, removeReminderUser, deleteUser } from './_lib/store.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
@@ -98,8 +98,8 @@ export async function POST(request) {
     if (action === 'draft') return json({ user: view(await draft(key, user, body.mode === 'after' ? 'after' : 'prep')) });
 
     if (action === 'reset') {
-      await storeUser(key, freshUser());
-      await removeReminderUser(key);
+      // Remove the record entirely, so an erased person doesn't linger as an empty user.
+      await deleteUser(key);
       return json({ user: view(freshUser()) });
     }
 

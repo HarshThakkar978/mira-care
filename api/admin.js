@@ -1,7 +1,10 @@
-// Backend for /admin.html. Read-only view of every user, protected by the ADMIN_PASSWORD setting in Vercel.
+// Backend for /admin.html: view every user and delete test or unwanted records. Protected by the ADMIN_PASSWORD setting in Vercel.
 import crypto from 'node:crypto';
 import { normalizeUser } from './_lib/mira.js';
-import { allUserIds, getUsers, storeConfigured } from './_lib/store.js';
+import { allUserIds, getUsers, deleteUser, storeConfigured } from './_lib/store.js';
+
+// Ids used by Claude's automated tests ("claude-…" device ids), so they can be cleaned out in one go.
+const isTestId = id => /^web-claude-/.test(id);
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' } });
 
@@ -25,7 +28,8 @@ function summary(id, u) {
     id, channel: id.startsWith('web-') ? 'App' : 'WhatsApp', name: u.profile.name || '', createdAt: u.createdAt || '', lastActive: lastActive(u),
     messages: msgs.length, symptoms: u.symptoms.length, periods: u.cycleStarts.length, checkins: u.checkins.length,
     notes: u.preNotes.length + u.postNotes.length, reminder: u.reminder.enabled ? u.reminder.hour : null,
-    lastMessage: msgs.length ? msgs[msgs.length - 1].text.slice(0, 120) : ''
+    lastMessage: msgs.length ? msgs[msgs.length - 1].text.slice(0, 120) : '',
+    test: isTestId(id)
   };
 }
 
@@ -66,6 +70,17 @@ export async function POST(request) {
     const u = normalizeUser(found[1]);
     const { history, actionLog, reminder, ...rest } = u;
     return json({ id, summary: summary(id, u), user: { ...rest, reminder: { enabled: reminder.enabled, hour: reminder.hour, tz: reminder.tz, devices: reminder.subscriptions.length } }, actionLog });
+  }
+  if (body.action === 'delete') {
+    const id = String(body.id || '');
+    if (!id) return json({ error: 'Missing user' }, 400);
+    await deleteUser(id);
+    return json({ deleted: 1 });
+  }
+  if (body.action === 'delete-test') {
+    const ids = (await allUserIds()).filter(isTestId);
+    for (const id of ids) await deleteUser(id);
+    return json({ deleted: ids.length });
   }
   return json({ error: 'Unknown action' }, 400);
 }
