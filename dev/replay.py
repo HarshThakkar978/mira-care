@@ -2,7 +2,7 @@
 # prints the replies and what got saved, then erases the test data.
 # Test users get ids starting with "claude-" so the admin page can clean up any leftovers.
 # Run: python3 dev/replay.py            (or: python3 dev/replay.py elsie)
-import json, sys, urllib.request, uuid
+import datetime, json, sys, urllib.request, uuid
 
 API = "https://mira-care.vercel.app/api/app"
 SCENARIOS = {
@@ -15,6 +15,13 @@ SCENARIOS = {
               "that's all for now"],
     "period": ["my period started yesterday, heavier than usual",
                "what have I logged this week?"],
+    "toughday": ["Hey! Tough day today at work. Very exhausted.",
+                 "yeah I haven't been sleeping well, keep waking up hot",
+                 "ok thanks, that's all for now"],
+    # Two earlier tired days are saved first, so Mira should connect today's message to them.
+    "tired_again": [("setup", "log_symptoms", {"days_ago": 2, "symptoms": [{"name": "fatigue", "severity": 6}]}),
+                    ("setup", "log_symptoms", {"days_ago": 1, "symptoms": [{"name": "fatigue", "severity": 7}, {"name": "night sweats", "severity": 6}]}),
+                    "so tired again today ugh"],
 }
 
 
@@ -31,6 +38,12 @@ for name, msgs in SCENARIOS.items():
     print(f"\n===== {name} =====")
     try:
         for m in msgs:
+            if isinstance(m, tuple):
+                _, tool, inp = m
+                inp = dict(inp); days = inp.pop("days_ago", 0)
+                inp["date"] = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
+                call(dev, "tool", name=tool, input=inp)
+                continue
             d = call(dev, "chat", text=m)
             print(f"USER: {m}\nMIRA ({len(d['reply'].split())} words): {d['reply']}\n")
         u = d["user"]

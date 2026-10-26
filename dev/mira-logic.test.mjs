@@ -83,3 +83,18 @@ const today = '2026-10-23';
 
   log(fail ? `${fail} FAILED` : 'ALL PASSED');
 })().catch(e => log('CRASH', String(e), e.stack));
+
+// Patterns: Mira gets a two-week summary to connect today's message to recent days.
+(async () => {
+  const u = freshUser();
+  u.symptoms.push({ id: 'a', date: '2026-10-20', name: 'Fatigue', severity: 6 }, { id: 'b', date: '2026-10-22', name: 'fatigue', severity: 8 }, { id: 'c', date: '2026-09-01', name: 'old thing', severity: 3 });
+  u.checkins.push({ id: 'd', date: '2026-10-22', feeling: 'wiped out' });
+  u.cycleStarts.push({ id: 'e', date: '2026-10-10' });
+  const c = fakeClaude([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] }]);
+  await handleIncoming(u, 'tired again', '2026-10-23', { model: 'm', effort: 'low', claude: c });
+  const ctx = c.seen[0].messages[0].content;
+  const check2 = (ok, m) => log(ok ? 'ok' : 'FAIL', m);
+  check2(ctx.includes('- fatigue: 2 days, average 7.0/10, peak 8'), 'patterns group symptoms over 14 days');
+  check2(!ctx.includes('old thing'), 'patterns skip entries older than 14 days');
+  check2(ctx.includes('"wiped out"') && ctx.includes('day 14 since their last period started'), 'patterns include check-ins and cycle day');
+})();
