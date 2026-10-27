@@ -27,17 +27,19 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
         return stream.finalMessage();
       }
     : params => client.beta.messages.create(params);
+  let quick = null; // tap-to-answer buttons Mira attached to this reply (app only)
   const reply = await handleIncoming(user, text, today(), {
     model,
     effort: env('MIRA_EFFORT') || 'low',
     fallbacks: !model.startsWith('claude-haiku'),
     channel,
     onRound: hooks.onRound,
+    onQuickReplies: q => { quick = q; },
     claude
   });
   // Full chat log for the app to display (history above is only the short memory sent to Claude).
   const at = new Date().toISOString();
-  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at }].slice(-TRANSCRIPT_MAX);
+  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}) }].slice(-TRANSCRIPT_MAX);
   await saveUser(key, user);
   return { reply, user };
 }

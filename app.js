@@ -67,7 +67,7 @@
   // ---------- Routing ----------
   const ROUTES = ['chat', 'today', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
-  const ui = { sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false };
+  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false };
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
   function go(to) {
@@ -117,10 +117,27 @@
       ? `<div class="msg them tail live" id="live">${fmtMsg(ui.live)}</div>`
       : `<div class="typing" aria-label="Mira is typing"><i></i><i></i><i></i></div>`);
     else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
-    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += `<div class="msg-status">Delivered</div>`;
+    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || `<div class="msg-status">Delivered</div>`;
     return html;
   }
+  // Tap-to-answer buttons Mira attached to her latest question (scale, options or pick-several).
+  function quickRepliesHtml(m) {
+    const q = m.ui;
+    if (!q) return '';
+    if (q.kind === 'scale') return `<div class="qr qr-scale pop" role="group" aria-label="Pick a number from 1 to 10">
+      <div class="qr-nums">${Array.from({ length: 10 }, (_, i) => `<button class="qr-num s${Math.ceil((i + 1) / 2)}" data-qr="${i + 1}/10" aria-label="${i + 1} out of 10">${i + 1}</button>`).join('')}</div>
+      <div class="qr-ends"><span>${esc(q.low)}</span><span>${esc(q.high)}</span></div></div>`;
+    if (q.kind === 'options') return `<div class="qr pop">${q.options.map(o => `<button class="qr-opt" data-qr="${esc(o)}">${esc(o)}</button>`).join('')}</div>`;
+    if (q.kind === 'multi') {
+      const picked = ui.multi.filter(o => q.options.includes(o));
+      return `<div class="qr pop">${q.options.map(o => `<button class="qr-opt ${picked.includes(o) ? 'on' : ''}" data-qr-toggle="${esc(o)}" aria-pressed="${picked.includes(o)}">${picked.includes(o) ? '✓ ' : ''}${esc(o)}</button>`).join('')}
+        <button class="qr-done" data-qr-done ${picked.length ? '' : 'disabled'}>Send${picked.length ? ` (${picked.length})` : ''}</button></div>`;
+    }
+    return '';
+  }
   function chipsHtml() {
+    const last = allMsgs().slice(-1)[0];
+    if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Mira's own answer buttons take over
     const first = !(user.transcript || []).length;
     const list = first
       ? ['Feeling okay today', 'Rough day today', 'My period started today', 'I had hot flashes last night']
@@ -585,6 +602,11 @@
     if (r) { e.preventDefault(); go(r.dataset.route); return; }
     const chip = e.target.closest('[data-chip]');
     if (chip) { sendMessage(chip.dataset.chip); return; }
+    const qr = e.target.closest('[data-qr]');
+    if (qr) { ui.multi = []; sendMessage(qr.dataset.qr); return; }
+    const qt = e.target.closest('[data-qr-toggle]');
+    if (qt) { const o = qt.dataset.qrToggle, i = ui.multi.indexOf(o); if (i >= 0) ui.multi.splice(i, 1); else ui.multi.push(o); refreshThread(); return; }
+    if (e.target.closest('[data-qr-done]') && ui.multi.length) { const t = ui.multi.join(', '); ui.multi = []; sendMessage(t); return; }
     const day = e.target.closest('[data-day]');
     if (day) { ui.selDay = day.dataset.day; ui.showSymForm = false; render(); return; }
     const tp = e.target.closest('[data-theme-pick]');
@@ -695,6 +717,20 @@
     if (el.dataset.profile) guarded(() => tool('save_profile', { [el.dataset.profile]: el.value }), 'Saved');
     if (el.matches('[data-reminder-hour]') && user.reminder && user.reminder.enabled) guarded(() => api('reminder', { hour: Number(el.value), tz: Intl.DateTimeFormat().resolvedOptions().timeZone }), `Reminder moved to around ${hourLabel(Number(el.value))}`);
   });
+
+  // ---------- Phone keyboard ----------
+  // iOS doesn't shrink the page when the keyboard opens, it slides it up, which squeezed the chat into a sliver.
+  // Size the app to the visible area instead, keep it pinned, and hide the tab bar and suggestions while typing.
+  const vv = window.visualViewport;
+  function fitViewport() {
+    if (!vv) return;
+    document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
+    if (document.body.classList.contains('kb-open')) { window.scrollTo(0, 0); scrollThread(); }
+  }
+  if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
+  const isTyping = el => el && el.id === 'msgInput';
+  document.addEventListener('focusin', e => { if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); } });
+  document.addEventListener('focusout', e => { if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); } }, 80); });
 
   // ---------- Start ----------
   render();

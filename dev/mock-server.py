@@ -93,14 +93,24 @@ def handle(body):
 def chat_stream(h, body):
     u = USERS.setdefault(body.get("id", ""), fresh())
     text = body["text"]
-    reply = "Oof, that sounds rough. I've noted it for today. How strong was it, roughly 1 to 10?"
+    low = text.lower()
+    if "sleep" in low:
+        reply, ui = "That sounds exhausting. Did you wake up hot or sweaty?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
+    elif "symptom" in low or "else" in low:
+        reply, ui = "Anything else today? Tap any that fit.", {"kind": "multi", "options": ["Headache", "Brain fog", "Joint pain", "Mood swings", "Bloating"]}
+    elif "/10" in low or low.strip().isdigit():
+        reply, ui = "Thanks, noted. Try a warm heat pad and an easy evening if you can.", None
+    else:
+        reply, ui = "Oof, that sounds rough. I've noted it for today. How strong was it, 1 to 10?", {"kind": "scale", "low": "Barely there", "high": "Worst ever"}
     h.send_response(200); h.send_header("Content-Type", "application/x-ndjson"); h.end_headers()
     def send(o): h.wfile.write((json.dumps(o) + "\n").encode()); h.wfile.flush()
     send({"t": "round"}); time.sleep(0.6)
     for word in reply.split(" "):
         send({"t": "delta", "text": word + " "}); time.sleep(0.05)
     at = now().isoformat()
-    u["transcript"] += [{"from": "you", "text": text, "at": at}, {"from": "mira", "text": reply, "at": at}]
+    m = {"from": "mira", "text": reply, "at": at}
+    if ui: m["ui"] = ui
+    u["transcript"] += [{"from": "you", "text": text, "at": at}, m]
     send({"t": "done", "reply": reply, "user": view(u)})
 
 

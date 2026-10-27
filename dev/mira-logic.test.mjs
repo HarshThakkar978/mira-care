@@ -98,3 +98,24 @@ const today = '2026-10-23';
   check2(!ctx.includes('old thing'), 'patterns skip entries older than 14 days');
   check2(ctx.includes('"wiped out"') && ctx.includes('day 14 since their last period started'), 'patterns include check-ins and cycle day');
 })();
+
+// Tap-to-answer buttons: offered only in the app, validated, and passed to the caller.
+import { cleanQuickReplies, QUICK_REPLY_TOOL } from '../api/_lib/mira.js';
+(async () => {
+  const ok = (c, m) => log(c ? 'ok' : 'FAIL', m);
+  let got = null;
+  const u = freshUser();
+  const c = fakeClaude([
+    { stop_reason: 'tool_use', content: [{ type: 'text', text: 'Oof. How strong were they, 1 to 10?' }, { type: 'tool_use', id: 'q', name: 'show_quick_replies', input: { kind: 'scale', low_label: 'Barely', high_label: 'Unbearable' } }] },
+    { stop_reason: 'end_turn', content: [] }
+  ]);
+  const r = await handleIncoming(u, 'cramps today', '2026-10-27', { model: 'm', effort: 'low', channel: 'app', claude: c, onQuickReplies: q => { got = q; } });
+  ok(c.seen[0].tools.some(t => t.name === QUICK_REPLY_TOOL.name), 'quick replies offered in the app');
+  ok(got && got.kind === 'scale' && got.low === 'Barely', 'scale passed to the caller');
+  ok(r === 'Oof. How strong were they, 1 to 10?', 'text from the tool round kept when the last round is empty');
+  const w = fakeClaude([{ stop_reason: 'end_turn', content: [{ type: 'text', text: 'hi' }] }]);
+  await handleIncoming(freshUser(), 'hi', '2026-10-27', { model: 'm', effort: 'low', channel: 'whatsapp', claude: w });
+  ok(!w.seen[0].tools.some(t => t.name === QUICK_REPLY_TOOL.name), 'not offered on WhatsApp');
+  ok(cleanQuickReplies({ kind: 'options', options: ['Yes'] }) === null, 'options need at least two choices');
+  ok(cleanQuickReplies({ kind: 'multi', options: ['a', 'b', 'a', '', 'c'] }).options.join() === 'a,b,c', 'options de-duplicated and trimmed');
+})();

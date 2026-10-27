@@ -34,7 +34,7 @@ button{cursor:pointer;-webkit-tap-highlight-color:transparent}
 .sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ---------- Layout ---------- */
-.app{height:100dvh;display:grid;grid-template-columns:232px minmax(0,1fr)}
+.app{height:var(--app-h,100dvh);display:grid;grid-template-columns:232px minmax(0,1fr)}
 .view{overflow-y:auto;-webkit-overflow-scrolling:touch;outline:none;min-width:0}
 .nav{border-right:1px solid var(--line);background:var(--surface);padding:22px 12px;display:flex;flex-direction:column;gap:4px}
 .brand{display:flex;align-items:center;gap:10px;padding:0 10px 22px}
@@ -294,3 +294,28 @@ body.sheet-open{overflow:hidden}
 }
 
 .ob-hint{font-size:13.5px;color:var(--muted);margin:16px 0 8px}
+
+/* ---------- Tap-to-answer buttons ---------- */
+.qr{align-self:flex-start;display:flex;flex-wrap:wrap;gap:7px;margin:2px 0 10px;max-width:min(92%,520px)}
+.qr-opt{border:1.5px solid color-mix(in srgb,var(--me) 45%,var(--line));background:var(--surface);color:var(--me);border-radius:999px;padding:8px 14px;font-size:15px;font-weight:500}
+.qr-opt.on{background:var(--me);border-color:var(--me);color:#fff}
+.qr-done{border:0;background:var(--me);color:#fff;border-radius:999px;padding:8px 16px;font-size:15px;font-weight:600}
+.qr-done:disabled{opacity:.4}
+.qr-scale{flex-direction:column;gap:5px;width:min(100%,420px)}
+.qr-nums{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:4px}
+.qr-num{aspect-ratio:1;border:0;border-radius:50%;font-size:15px;font-weight:650;color:#123b31;background:var(--sev-2)}
+.qr-num.s1{background:var(--sev-1)}.qr-num.s2{background:var(--sev-2)}.qr-num.s3{background:var(--sev-3)}.qr-num.s4{background:var(--sev-4);color:#fff}.qr-num.s5{background:var(--sev-5);color:#fff}
+:root[data-theme="dark"] .qr-num{color:#fff}
+@media (prefers-color-scheme:dark){:root[data-theme="system"] .qr-num{color:#fff}}
+.qr-num:active,.qr-opt:active,.qr-done:active{transform:scale(.92)}
+.qr-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--faint);padding:0 2px}
+
+/* ---------- While typing on a phone: give the chat the whole screen ---------- */
+@media (max-width:760px){
+  body.kb-open .nav,body.kb-open #chips{display:none}
+  body.kb-open .app{grid-template-rows:minmax(0,1fr) 0}
+  body.kb-open .chat-head{padding-top:calc(4px + var(--safe-t));padding-bottom:6px}
+  body.kb-open .chat-head .avatar{width:30px;height:30px;font-size:18px}
+  body.kb-open .chat-status{display:none}
+  body.kb-open .composer{padding-bottom:8px}
+}

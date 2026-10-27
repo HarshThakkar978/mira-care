@@ -21,6 +21,8 @@ Acknowledging isn't enough on its own: a reply that only says "noted, hope it ge
 - *Help with what's coming.* If they have an appointment soon or something keeps coming up, offer to add it to their list for the visit.
 A good reply often combines a comforting idea with one gentle question. Ending with a question is good when it moves things forward or helps them feel heard; don't ask one when they're clearly wrapping up ("that's all", "thanks, bye") — then close warmly in one short line.
 
+Make answering easy: when the show_quick_replies tool is available and your question has a few likely answers, also call it so they can tap instead of typing. An intensity question gets kind "scale"; yes/no or a few choices get "options" (short labels in their voice, like "Yes, twice" or "Not really"); "which of these" gets "multi". Your text must still ask the question. Don't attach buttons to open questions where they'd want to explain in their own words.
+
 Don't interrogate:
 - At most one question per reply.
 - Ask about any detail once, ever. If they don't answer it or move on, let it go.
@@ -158,6 +160,34 @@ export const TOOLS = [
     }
   }
 ];
+
+// App only: tap-to-answer buttons shown under Mira's message. Not offered on WhatsApp.
+export const QUICK_REPLY_TOOL = {
+  name: 'show_quick_replies',
+  description: 'Show tap-to-answer buttons under the question you are asking in this message, so they can answer with one tap. kind "scale": a 1-10 intensity scale (optionally label the ends). kind "options": 2-5 short answers, one tap each. kind "multi": 2-8 options they can pick several of. Call it at most once per reply, and still ask the question in your text.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      kind: { type: 'string', enum: ['scale', 'options', 'multi'] },
+      options: { type: 'array', items: { type: 'string' }, description: 'For options/multi: short labels (under 30 characters each).' },
+      low_label: { type: 'string', description: 'For scale: what 1 means, e.g. "Barely there".' },
+      high_label: { type: 'string', description: 'For scale: what 10 means, e.g. "Worst ever".' }
+    },
+    required: ['kind']
+  }
+};
+
+// Checks and trims what Mira asked to show; returns null if it isn't usable.
+export function cleanQuickReplies(input) {
+  const kind = input && input.kind;
+  const short = (v, n) => String(v || '').trim().slice(0, n);
+  if (kind === 'scale') return { kind, low: short(input.low_label, 24) || 'Mild', high: short(input.high_label, 24) || 'Strong' };
+  if (kind === 'options' || kind === 'multi') {
+    const options = [...new Set((Array.isArray(input.options) ? input.options : []).map(o => short(o, 40)).filter(Boolean))].slice(0, kind === 'multi' ? 8 : 5);
+    return options.length >= 2 ? { kind, options } : null;
+  }
+  return null;
+}
 
 export function freshUser() {
   return {
@@ -336,7 +366,7 @@ function describeAction(name, input, result, at) {
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void }
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onQuickReplies?: (qr) => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
   if (text.trim().toUpperCase() === 'DELETE ALL') {
@@ -351,13 +381,14 @@ export async function handleIncoming(user, text, today, deps) {
   const at = new Date().toISOString();
   const actions = [];
 
-  let reply = '';
+  let reply = '', earlierText = '';
+  const tools = deps.channel === 'app' ? [...TOOLS, QUICK_REPLY_TOOL] : TOOLS;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const params = {
       model: deps.model,
       max_tokens: 8000,
       system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
-      tools: TOOLS,
+      tools,
       output_config: { effort: deps.effort },
       messages
     };
@@ -374,10 +405,16 @@ export async function handleIncoming(user, text, today, deps) {
     const texts = response.content.filter(b => b.type === 'text').map(b => b.text.trim()).filter(Boolean);
     if (response.stop_reason === 'pause_turn') continue;
     if (!toolUses.length) { reply = texts.join('\n\n'); break; }
+    if (texts.length) earlierText = texts.join('\n\n');
     messages.push({
       role: 'user',
       content: toolUses.map(t => {
         let result;
+        if (t.name === QUICK_REPLY_TOOL.name) {
+          const qr = cleanQuickReplies(t.input);
+          if (qr && deps.onQuickReplies) deps.onQuickReplies(qr);
+          return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(qr ? { ok: true, shown: true } : { ok: false, error: 'Need kind scale, or 2+ options.' }), is_error: !qr };
+        }
         try { result = runTool(user, t.name, t.input, today); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
         const line = t.name === 'get_my_history' ? '' : describeAction(t.name, t.input || {}, result, at);
         if (line) actions.push(line);
@@ -386,7 +423,7 @@ export async function handleIncoming(user, text, today, deps) {
     });
   }
 
-  reply = (reply || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions)>/g, '').trim().slice(0, 4000);
+  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions)>/g, '').trim().slice(0, 4000);
   user.history = [...history, { role: 'user', text }, { role: 'assistant', text: reply }].slice(-HISTORY_TURNS);
   user.actionLog = [...(user.actionLog || []), ...actions].slice(-30);
   return reply;
