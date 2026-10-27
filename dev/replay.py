@@ -45,7 +45,8 @@ for name, msgs in SCENARIOS.items():
                 call(dev, "tool", name=tool, input=inp)
                 continue
             d = call(dev, "chat", text=m)
-            print(f"USER: {m}\nMIRA ({len(d['reply'].split())} words): {d['reply']}\n")
+            ui = (d["user"]["transcript"][-1] or {}).get("ui")
+            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + "\n")
         u = d["user"]
         print("SAVED symptoms:", [(s["name"], s.get("severity"), s.get("impact"), s["date"]) for s in u["symptoms"]])
         print("SAVED periods:", [c["date"] for c in u["cycleStarts"]], "| checkins:", [c["feeling"] for c in u["checkins"]], "| name:", u["profile"]["name"])

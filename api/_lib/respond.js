@@ -4,7 +4,7 @@ import { handleIncoming, normalizeUser, localDate } from './mira.js';
 import { getUser, saveUser } from './store.js';
 
 const env = name => process.env[name] || '';
-export const MODEL = () => env('MIRA_MODEL') || 'claude-haiku-5-5';
+export const MODEL = () => env('MIRA_MODEL') || 'claude-sonnet-5-5';
 export const today = () => localDate(env('MIRA_TIMEZONE') || 'America/New_York');
 const TRANSCRIPT_MAX = 300;
 
