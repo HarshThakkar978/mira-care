@@ -14,8 +14,10 @@ export const storeUser = (key, user) => saveUser(key, user);
 // key: the person's storage id — phone digits on WhatsApp, "web-<device id>" in the app.
 // hooks.onText(delta) streams Cura's words as they're written (the app); without it the reply arrives whole (WhatsApp).
 // Tool inputs here are tiny, so eager tool-input streaming isn't worth turning on.
+// hooks.context(user, text) → { note, ideas } adds community context in the app (see community.js).
 export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
   const user = await loadUser(key);
+  const extra = hooks.context ? await hooks.context(user, text).catch(e => { console.error('chat context failed', e); return {}; }) : {};
   const client = new Anthropic();
   const model = MODEL();
   const claude = hooks.onText
@@ -27,7 +29,7 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
         return stream.finalMessage();
       }
     : params => client.beta.messages.create(params);
-  let quick = null; // tap-to-answer buttons Cura attached to this reply (app only)
+  let quick = null, idea = null; // tap-to-answer buttons and an idea card Cura attached to this reply (app only)
   const reply = await handleIncoming(user, text, today(), {
     model,
     effort: env('MIRA_EFFORT') || 'low',
@@ -35,11 +37,15 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
     channel,
     onRound: hooks.onRound,
     onQuickReplies: q => { quick = q; },
+    note: extra.note || '',
+    ideas: extra.ideas || [],
+    onIdea: i => { idea = i; },
     claude
   });
   // Full chat log for the app to display (history above is only the short memory sent to Claude).
   const at = new Date().toISOString();
-  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}) }].slice(-TRANSCRIPT_MAX);
+  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}), ...(idea ? { idea } : {}) }].slice(-TRANSCRIPT_MAX);
+  if (idea) user.offers = { ...user.offers, [idea.id]: today() }; // not offered again for two weeks
   await saveUser(key, user);
   return { reply, user };
 }

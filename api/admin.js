@@ -1,7 +1,8 @@
 // Backend for /admin.html: view every user and delete test or unwanted records. Protected by the ADMIN_PASSWORD setting in Vercel.
 import crypto from 'node:crypto';
 import { normalizeUser } from './_lib/mira.js';
-import { allUserIds, getUsers, deleteUser, storeConfigured } from './_lib/store.js';
+import { allUserIds, getUsers, storeConfigured } from './_lib/store.js';
+import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay } from './_lib/community.js';
 
 // Ids used by Claude's automated tests ("claude-…" device ids), so they can be cleaned out in one go.
 const isTestId = id => /^web-claude-/.test(id);
@@ -74,13 +75,29 @@ export async function POST(request) {
   if (body.action === 'delete') {
     const id = String(body.id || '');
     if (!id) return json({ error: 'Missing user' }, 400);
-    await deleteUser(id);
+    await eraseUser(id);
     return json({ deleted: 1 });
   }
   if (body.action === 'delete-test') {
     const ids = (await allUserIds()).filter(isTestId);
-    for (const id of ids) await deleteUser(id);
+    for (const id of ids) await eraseUser(id);
     return json({ deleted: ids.length });
   }
+  // ---------- Community: tips to review, groups, messages ----------
+  if (body.action === 'community') return json(await adminCommunity());
+  if (body.action === 'group-msgs') return json({ messages: await adminGroupMessages(String(body.groupId || '')) });
+  if (body.action === 'msg-delete') return json({ deleted: await adminDeleteMessage(String(body.groupId || ''), String(body.msgId || '')) });
+  if (body.action === 'tip-save') {
+    const tip = await saveTip(String(body.id || ''), { fields: body.fields || {}, status: body.status, remove: body.remove === true });
+    return tip ? json({ tip }) : json({ error: 'Tip not found' }, 404);
+  }
+  if (body.action === 'tip-add') {
+    const text = String(body.text || '').trim();
+    if (!text) return json({ error: 'Write a tip first' }, 400);
+    const tips = await addTeamTips(text);
+    return tips.length ? json({ added: tips.length }) : json({ error: "Cura couldn't find a tip in that text. Try one tip per line, e.g. \"A cool shower before bed for night sweats\"." }, 400);
+  }
+  if (body.action === 'regroup') return json({ result: await regroup({ force: true }) });
+  if (body.action === 'questions') return json({ posted: await questionsOfTheDay() });
   return json({ error: 'Unknown action' }, 400);
 }

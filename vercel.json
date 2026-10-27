@@ -30,6 +30,12 @@
       ]
     }
   ],
+  "rewrites": [
+    {
+      "source": "/cal/:token",
+      "destination": "/api/calendar?t=:token"
+    }
+  ],
   "crons": [
     {
       "path": "/api/reminders?h=0",

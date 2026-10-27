@@ -15,7 +15,7 @@
   let deviceId = store.get(ID_KEY);
   if (!deviceId || !ID_RE.test(deviceId)) { deviceId = newId(); store.set(ID_KEY, deviceId); }
 
-  const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, reminder: { enabled: false, hour: 20, devices: 0 }, transcript: [] });
+  const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, reminder: { enabled: false, hour: 20, devices: 0 }, community: { joined: false, anonymous: false, alias: '', focus: [], groupId: '', reason: '', notice: null, hidden: [] }, plan: [], transcript: [] });
   let user = (() => { try { return { ...emptyUser(), ...JSON.parse(store.get(CACHE_KEY) || '{}') }; } catch { return emptyUser(); } })();
   const saveCache = () => store.set(CACHE_KEY, JSON.stringify(user));
 
@@ -65,9 +65,10 @@
   const tool = (name, input) => api('tool', { name, input });
 
   // ---------- Routing ----------
-  const ROUTES = ['chat', 'today', 'cycle', 'visit', 'me', 'report'];
+  const ROUTES = ['chat', 'today', 'community', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
-  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false };
+  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false };
+  function freshCm() { return { tab: 'group', group: null, messages: [], loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
   function go(to) {
@@ -75,16 +76,24 @@
     const swap = () => { route = to; if (location.hash.slice(1) !== to) history.replaceState(null, '', '#' + to); render(); };
     if (document.startViewTransition && !reduceMotion()) document.startViewTransition(swap); else swap();
   }
+  // Redraw without jumping back to the top (for toggles further down a page).
+  function renderInPlace() { const v = $('#view'), top = v.scrollTop; render(); v.scrollTop = top; }
   window.addEventListener('hashchange', () => { const r = location.hash.slice(1); if (ROUTES.includes(r) && r !== route) { route = r; render(); } });
 
   function render() {
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === route));
     const view = $('#view');
-    view.innerHTML = { chat: renderChat, today: renderToday, cycle: renderCycle, visit: renderVisit, me: renderMe, report: renderReport }[route]();
+    view.innerHTML = { chat: renderChat, today: renderToday, community: renderCommunity, cycle: renderCycle, visit: renderVisit, me: renderMe, report: renderReport }[route]();
     if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
+    if (route === 'community') scrollThread();
     document.querySelectorAll('textarea.ag-text').forEach(autoGrow);
     if (route === 'today') maybeLoadInsight();
     renderSheet();
+    syncPoll(); updateBadge();
+    if (route === 'community' && joined()) {
+      if (!ui.cm.loaded) loadGroup(true);
+      if (ui.cm.tab === 'ideas' && ui.cm.ideas === null) loadIdeas();
+    }
   }
 
   // ---------- Chat ----------
@@ -111,6 +120,7 @@
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
+      if (m.idea) html += ideaCardHtml(m.idea, true);
     });
     ui.seen = msgs.length;
     if (ui.pending) html += `<div class="msg me tail pop">${fmtMsg(ui.pending)}</div>` + (ui.live
@@ -161,7 +171,7 @@
     </section>`;
   }
   function afterChatRender() { scrollThread(); }
-  function scrollThread() { const t = $('#thread'); if (t) t.scrollTop = t.scrollHeight; }
+  function scrollThread() { const t = $('#thread') || $('#gthread'); if (t) t.scrollTop = t.scrollHeight; }
   function refreshThread() { const t = $('#thread'); if (!t) return; t.innerHTML = threadHtml(); const c = $('#chips'); if (c) c.innerHTML = chipsHtml(); scrollThread(); }
   // Updates only the streaming bubble, so the rest of the thread doesn't flicker.
   function updateLive() {
@@ -255,6 +265,7 @@
         ${user.reminder && user.reminder.enabled ? `<button class="btn ghost" data-route="report">📄 Doctor summary</button>` : `<button class="btn ghost" data-route="me">🔔 Daily reminder</button>`}
       </div>
       ${insightCard()}
+      ${planCard()}
       <div class="grid three">
         <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Cura when it starts'}</div></div>
         <div class="card stat"><div class="stat-label">Average gap</div><div class="stat-value">${avg ? avg + ' days' : '—'}</div><div class="stat-note">${gaps.length ? `Across ${plural(gaps.length + 1, 'period')} · last ${gaps[gaps.length - 1]} days` : 'Needs two period starts'}</div></div>
@@ -421,6 +432,10 @@
       <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Cura calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
       ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Cura to your Home Screen</h2>${installHelp()}</div>`}
       <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
+      <div class="card"><h2 class="card-title">👥 Community</h2>${joined()
+        ? `<p class="card-sub">You're in <b>${esc((ui.cm.group && ui.cm.group.name) || 'a group')}</b>, shown as <b>${esc(user.community.anonymous || !user.profile.name ? user.community.alias : user.profile.name)}</b>.</p><button class="btn ghost" data-action="cm-settings">Group settings</button>`
+        : `<p class="card-sub">Talk with a small group of people whose symptoms are like yours.</p><button class="btn ghost" data-route="community">Join the community</button>`}</div>
+      <div class="card"><h2 class="card-title">📅 Calendar</h2><p class="card-sub">Put your plan and your next appointment on Apple or Google Calendar. It updates by itself.</p><button class="btn ghost" data-action="cal-open">Add to my calendar</button></div>
       <div class="card"><h2 class="card-title">🎨 Appearance</h2><p class="card-sub">Light, dark, or follow your phone's setting.</p>${themeSeg()}</div>
       <div class="card"><h2 class="card-title">Use Cura on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
@@ -482,6 +497,255 @@
     return `<p class="card-sub" style="margin:0">On Android, open the browser menu <b>⋮</b> and tap <b>Install app</b> or <b>Add to Home screen</b>. On a computer, look for the install icon in the address bar.</p>`;
   }
 
+  // ---------- Community: your group, ideas from it, and your daily plan ----------
+  const WHEN_LABEL = { morning: 'Morning', midday: 'Midday', evening: 'Evening', bedtime: 'Bedtime', anytime: 'Any time' };
+  const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : '');
+  const joined = () => !!(user.community && user.community.joined);
+  const inPlan = tipId => (user.plan || []).some(p => p.tipId === tipId && p.status === 'active');
+  const activePlan = () => (user.plan || []).filter(p => p.status === 'active');
+  const defaultFocus = () => topSymptoms(user.symptoms).slice(0, 4).map(t => cap(t.name));
+  // Their chosen symptoms first, then ones they've logged, then common ones.
+  function focusChoices(selected) {
+    const known = new Set(selected.map(x => x.toLowerCase()));
+    const extra = [...defaultFocus(), ...COMMON_SYMPTOMS].filter(n => { const k = n.toLowerCase(); if (known.has(k)) return false; known.add(k); return true; });
+    return [...selected, ...extra].slice(0, 18);
+  }
+
+  function joinHtml() {
+    // Start from what they've logged, once their data has loaded.
+    const start = () => ({ focus: defaultFocus(), anonymous: !user.profile.name, name: user.profile.name || '', busy: false });
+    if (!ui.cm.join && ui.loaded) ui.cm.join = start();
+    const J = ui.cm.join || start();
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">Community</div><h1 class="title">You're not alone in this</h1>
+        <p class="sub">Cura puts you in a small group with people whose symptoms are like yours. Swap what's helped, and Cura turns the best tips into ideas you can try.</p></div>
+      <div class="card"><h2 class="card-title">What would you like to talk about?</h2>
+        <p class="card-sub">${defaultFocus().length ? "We picked these from what you've told Cura. Change them if you like." : 'Pick any that fit. Cura uses them to find your group.'}</p>
+        <div class="chipset">${focusChoices(J.focus).map(n => `<button class="chip ${J.focus.includes(n) ? 'on' : ''}" data-cm-focus="${esc(n)}" aria-pressed="${J.focus.includes(n)}">${esc(n)}</button>`).join('')}</div></div>
+      <div class="card"><h2 class="card-title">How should you appear?</h2><p class="card-sub">You can change this anytime.</p>
+        <div class="seg" role="radiogroup" aria-label="How you appear">
+          <button role="radio" aria-checked="${!J.anonymous}" class="${!J.anonymous ? 'on' : ''}" data-cm-anon="0">By first name</button>
+          <button role="radio" aria-checked="${J.anonymous}" class="${J.anonymous ? 'on' : ''}" data-cm-anon="1">Anonymously</button></div>
+        ${J.anonymous ? `<p class="small muted" style="margin:0">You'll show up with a nickname, like Willow or Fern. Nobody sees your name.</p>` : `<label class="sr-only" for="cmName">Your first name</label><input class="input" id="cmName" data-cm-name maxlength="60" placeholder="Your first name" value="${esc(J.name)}" autocomplete="given-name">`}
+      </div>
+      <div class="card how-it-works">
+        <div class="hiw"><span>1</span><p><b>Cura finds your people.</b> It matches you with others whose symptoms and intensity are like yours, and keeps adjusting as the community grows.</p></div>
+        <div class="hiw"><span>2</span><p><b>Just chat.</b> Share what you're going through and what's helped. No forms.</p></div>
+        <div class="hiw"><span>3</span><p><b>Try what worked.</b> Cura picks out tips, says why they may help, and adds the ones you choose to your daily plan.</p></div>
+      </div>
+      <button class="btn primary" data-action="cm-join" style="width:100%;margin-top:14px" ${J.busy ? 'disabled' : ''}>${J.busy ? 'Finding your group…' : 'Join my group'}</button>
+      <p class="note">Be kind, and share your own experience rather than medical advice. The Cura team reads the groups to keep them safe. You can leave anytime.</p>
+    </div>`;
+  }
+
+  function renderCommunity() {
+    if (!joined()) return joinHtml();
+    const g = ui.cm.group, notice = user.community.notice;
+    const tabs = [['group', 'Group'], ['ideas', 'Ideas for you']];
+    return `<section class="chat community">
+      <header class="chat-head group-head">
+        <button class="icon-btn head-btn" data-action="cm-settings" aria-label="Group settings">⋯</button>
+        <div class="avatar group-avatar" aria-hidden="true">👥</div>
+        <div class="chat-name">${esc(g ? g.name : 'Your group')}</div>
+        <div class="chat-status">${g ? `${plural(g.size, 'member')}${g.focus ? ' · ' + esc(g.focus) : ''}` : 'Loading…'}</div>
+      </header>
+      <div class="seg cm-tabs" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${ui.cm.tab === k}" class="${ui.cm.tab === k ? 'on' : ''}" data-cm-tab="${k}">${l}</button>`).join('')}</div>
+      ${ui.cm.tab === 'ideas' ? `<div class="cm-scroll" id="ideas">${ideasHtml()}</div>` : `
+      ${notice ? `<div class="install notice"><span>🔀</span><span>${esc(notice.text)}</span><button class="icon-btn" data-action="cm-notice" aria-label="Dismiss">×</button></div>` : ''}
+      <div class="thread" id="gthread" aria-live="polite">${groupThreadHtml()}</div>
+      <form class="composer" id="groupComposer">
+        <label class="sr-only" for="groupInput">Message your group</label>
+        <textarea id="groupInput" rows="1" placeholder="Message your group" enterkeyhint="send" autocomplete="off"></textarea>
+        <button class="send" id="groupSend" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+      </form>`}
+    </section>`;
+  }
+
+  function groupThreadHtml() {
+    if (!ui.cm.loaded) return '<div class="typing" aria-label="Loading"><i></i><i></i><i></i></div>';
+    const msgs = ui.cm.messages;
+    const gap = (a, b) => new Date(b.at) - new Date(a.at) > 3600000;
+    const same = (a, b) => a && b && a.name === b.name && a.mine === b.mine && !gap(a, b);
+    let html = `<p class="cm-hint">Share what you're going through and what's helped. Cura quietly picks out tips to pass on to people like you.</p>`;
+    msgs.forEach((m, i) => {
+      const prev = msgs[i - 1], next = msgs[i + 1];
+      if (!prev || gap(prev, m)) html += `<div class="stamp">${stampText(m.at)}</div>`;
+      if (!m.mine && !same(prev, m)) html += `<div class="sender${m.cura ? ' cura' : ''}">${esc(m.name)}</div>`;
+      html += `<div class="msg ${m.mine ? 'me' : 'them'}${m.cura ? ' cura' : ''}${same(m, next) ? '' : ' tail'}">${fmtMsg(m.text)}</div>`;
+    });
+    if (ui.cm.posting) html += `<div class="msg me tail sending">${fmtMsg(ui.cm.posting)}</div>`;
+    return html;
+  }
+  const mergeMsgs = (a, b) => { const seen = new Set(); return [...a, ...b].filter(m => !seen.has(m.id) && seen.add(m.id)); };
+
+  // full: the whole recent history (first open); otherwise only what's new since the last message.
+  async function loadGroup(full) {
+    if (!joined() || ui.cm.fetching) return;
+    ui.cm.fetching = true;
+    try {
+      const last = ui.cm.messages[ui.cm.messages.length - 1];
+      const d = await api('group', full || !last ? {} : { since: last.at }, { keepUser: true });
+      const first = !ui.cm.loaded;
+      if (d.group) ui.cm.group = d.group;
+      if (d.notice !== undefined) user.community.notice = d.notice;
+      const next = mergeMsgs(full ? [] : ui.cm.messages, d.messages || []);
+      const changed = first || full || next.length !== ui.cm.messages.length;
+      ui.cm.messages = next; ui.cm.loaded = true; ui.unread = 0; updateBadge();
+      if (changed && route === 'community') refreshGroup(first || full);
+      if (ui.sheet === 'cm') renderSheet();
+    } catch (e) { if (full) toast(e.message); }
+    ui.cm.fetching = false;
+  }
+  // Redraws the group without losing a half-typed message.
+  function refreshGroup(whole) {
+    const t = $('#gthread');
+    if (!t || whole) {
+      const box = $('#groupInput'), val = box ? box.value : '', focused = box && document.activeElement === box;
+      render();
+      const nb = $('#groupInput');
+      if (nb && val) { nb.value = val; autoGrow(nb); $('#groupSend').disabled = !val.trim(); }
+      if (nb && focused) nb.focus({ preventScroll: true });
+      return;
+    }
+    const near = t.scrollHeight - t.scrollTop - t.clientHeight < 140;
+    t.innerHTML = groupThreadHtml();
+    if (near) t.scrollTop = t.scrollHeight;
+  }
+  // New group messages arrive by checking every few seconds while the group is on screen.
+  let pollTimer = null;
+  function syncPoll() {
+    const want = route === 'community' && joined() && ui.cm.tab === 'group' && document.visibilityState === 'visible';
+    if (want && !pollTimer) pollTimer = setInterval(() => loadGroup(false), 5000);
+    if (!want && pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+  }
+  document.addEventListener('visibilitychange', () => { syncPoll(); if (document.visibilityState === 'visible' && route === 'community' && joined() && ui.cm.loaded) loadGroup(false); });
+  function updateBadge() {
+    const b = $('#cmBadge'); if (!b) return;
+    const n = route === 'community' ? 0 : ui.unread;
+    b.hidden = !n; b.textContent = n > 9 ? '9+' : String(n || '');
+  }
+
+  async function postToGroup(text) {
+    text = text.trim();
+    if (!text || ui.cm.posting) return;
+    ui.cm.posting = text; refreshGroup(false); scrollThread();
+    try {
+      const last = ui.cm.messages[ui.cm.messages.length - 1];
+      const d = await api('group-post', { text, since: last ? last.at : '' }, { keepUser: true });
+      ui.cm.messages = mergeMsgs(ui.cm.messages, d.messages || []);
+      if (d.group) ui.cm.group = d.group;
+    } catch (e) {
+      toast(e.message);
+      const box = $('#groupInput'); if (box && !box.value) { box.value = text; autoGrow(box); $('#groupSend').disabled = false; }
+    }
+    ui.cm.posting = ''; refreshGroup(false); scrollThread();
+  }
+
+  function ideaCardHtml(i, inChat) {
+    const stats = [i.stats && i.stats.shared ? `${plural(i.stats.shared, 'member')} shared that it helped` : '', i.stats && i.stats.tried ? `${i.stats.helped} of ${i.stats.tried} who tried it said it helped` : '', i.team ? 'From the Cura team' : ''].filter(Boolean).join(' · ');
+    const action = i.kind === 'medical'
+      ? `<button class="btn small ghost" data-action="idea-visit" data-tip="${esc(i.id)}" data-title="${esc(i.title)}" data-symptom="${esc(i.symptom)}">📝 Ask my clinician about it</button>`
+      : inPlan(i.id) ? '<span class="pill">✓ In your plan</span>' : `<button class="btn small primary" data-action="plan-add" data-tip="${esc(i.id)}">Add to my plan</button>`;
+    return `<div class="${inChat ? 'idea in-chat' : 'card idea'}">
+      <div class="idea-kicker">${inChat ? '<span>🌿 From the community</span>' : ''}<span class="pill">${esc(cap(i.symptom))}</span><span>${esc(WHEN_LABEL[i.when] || 'Any time')}</span></div>
+      <div class="idea-title">${esc(i.title)}</div>
+      ${i.why ? `<p class="idea-why"><b>Why it may help:</b> ${esc(i.why)}</p>` : ''}
+      ${!inChat && i.personal ? `<p class="idea-meta">${esc(i.personal)}</p>` : ''}
+      ${stats && !inChat ? `<p class="idea-meta">${esc(stats)}</p>` : ''}
+      <div class="row-wrap">${action}${inChat ? '' : `<button class="btn small ghost" data-action="tip-hide" data-tip="${esc(i.id)}">Not now</button>`}</div>
+    </div>`;
+  }
+  function ideasHtml() {
+    const plan = activePlan();
+    const top = `<div class="card plan-mini"><div class="row"><div><h2 class="card-title">🌿 Your plan</h2><p class="card-sub" style="margin:0">${plan.length ? `${plural(plan.length, 'idea')} you're trying. Tick ${plan.length === 1 ? 'it' : 'them'} off on Today.` : 'Add an idea below and it shows up on Today each day.'}</p></div>${plan.length ? '<button class="btn small ghost" data-route="today">Open</button>' : ''}</div>
+      <div class="row-wrap" style="margin-top:10px"><button class="btn small ghost" data-action="cal-open">📅 Put my plan on my calendar</button></div></div>`;
+    if (ui.cm.ideas === null) return top + '<div class="card"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div>';
+    const list = ui.cm.ideas, mine = list.filter(i => i.match), more = list.filter(i => !i.match);
+    if (!list.length) return top + `<div class="empty" style="margin-top:14px"><strong>No ideas yet</strong>As people share what's helped, the Cura team checks the tips and they show up here.</div>`;
+    return top
+      + (mine.length ? `<div class="section-kicker">For what you're dealing with</div>${mine.map(i => ideaCardHtml(i)).join('')}` : '')
+      + (more.length ? `<div class="section-kicker">${mine.length ? 'Also popular' : 'Popular in the community'}</div>${more.map(i => ideaCardHtml(i)).join('')}` : '')
+      + `<p class="note">Ideas come from members' own experience and are checked by the Cura team. They're everyday things to try, not medical advice.</p>`;
+  }
+  async function loadIdeas() {
+    if (ui.cm.ideasLoading) return;
+    ui.cm.ideasLoading = true;
+    try { const d = await api('ideas', {}, { keepUser: true }); ui.cm.ideas = d.ideas || []; } catch (e) { ui.cm.ideas = ui.cm.ideas || []; toast(e.message); }
+    ui.cm.ideasLoading = false;
+    if (route === 'community' && ui.cm.tab === 'ideas') { const sc = $('#ideas'), top = sc ? sc.scrollTop : 0; render(); const n = $('#ideas'); if (n) n.scrollTop = top; }
+  }
+
+  function planCard() {
+    const items = activePlan();
+    if (!items.length) return joined()
+      ? `<button class="cta soft" data-action="cm-ideas"><span style="font-size:26px">🌿</span><span><strong>Ideas from your community</strong><small>Things that helped people like you. Add one to your plan.</small></span><span class="arrow">›</span></button>`
+      : `<button class="cta soft" data-route="community"><span style="font-size:26px">👥</span><span><strong>You're not alone in this</strong><small>Join a small group of people whose symptoms are like yours.</small></span><span class="arrow">›</span></button>`;
+    return `<div class="card plan-card">
+      <div class="row"><h2 class="card-title">🌿 Your plan</h2><button class="btn small ghost" data-action="cal-open">📅 Calendar</button></div>
+      <p class="card-sub" style="margin-bottom:4px">Ideas you picked from the community. Tick them off each day.</p>
+      ${items.map(planItemHtml).join('')}
+    </div>`;
+  }
+  function planItemHtml(p) {
+    const day = diffDays(p.start, today()) + 1, done = (p.done || []).includes(today());
+    const due = !p.outcome && today() >= p.checkOn;
+    const meta = [WHEN_LABEL[p.when] || 'Any time', `for ${p.symptom}`, p.kept ? 'it helped, keep it up' : due ? 'one week done' : `day ${Math.min(day, 7)} of 7`].join(' · ');
+    return `<div class="plan-item">
+      <button class="check ${done ? 'on' : ''}" data-action="plan-done" data-id="${esc(p.id)}" aria-pressed="${done}" aria-label="${done ? 'Done today' : 'Mark done today'}: ${esc(p.title)}">${done ? '✓' : ''}</button>
+      <div class="li-main"><div class="li-title">${esc(p.title)}</div><div class="li-meta">${esc(meta)}</div>
+        ${due ? `<div class="plan-check"><span>You've tried it for a week. Did it help?</span><div class="row-wrap">${[['a_lot', 'Helped a lot'], ['some', 'A little'], ['not_much', 'Not really']].map(([k, l]) => `<button class="qr-opt" data-action="plan-outcome" data-id="${esc(p.id)}" data-how="${k}">${l}</button>`).join('')}</div></div>` : ''}
+      </div>
+      <button class="icon-btn" data-action="plan-remove" data-id="${esc(p.id)}" aria-label="Remove ${esc(p.title)} from your plan">×</button>
+    </div>`;
+  }
+
+  function cmSettingsHtml() {
+    const c = user.community, g = ui.cm.group;
+    if (!ui.cm.focusEdit) ui.cm.focusEdit = [...(c.focus || [])];
+    const F = ui.cm.focusEdit, changed = F.join('|') !== (c.focus || []).join('|');
+    const anon = c.anonymous || !user.profile.name;
+    return `<div class="sheet-head"><h2 id="sheetTitle" class="card-title">${esc(g ? g.name : 'Your group')}</h2><button class="icon-btn" data-action="sheet-close" aria-label="Close">×</button></div>
+      ${g && g.focus ? `<p class="card-sub">${esc(g.focus)}</p>` : ''}
+      ${c.reason ? `<div class="install" style="margin:0 0 6px"><span>💚</span><span>${esc(c.reason)}</span></div>` : ''}
+      ${g ? `<div class="section-kicker">Members (${g.size})</div><p class="small" style="margin:0;line-height:1.6">${g.members.map(esc).join(', ')}</p>` : ''}
+      <div class="section-kicker">How you appear</div>
+      <div class="seg" role="radiogroup" aria-label="How you appear" style="margin-bottom:6px">
+        <button role="radio" aria-checked="${!anon}" class="${!anon ? 'on' : ''}" data-cm-appear="0" ${user.profile.name ? '' : 'disabled'}>${user.profile.name ? 'As ' + esc(user.profile.name) : 'By first name'}</button>
+        <button role="radio" aria-checked="${anon}" class="${anon ? 'on' : ''}" data-cm-appear="1">Anonymously${c.alias ? ' (' + esc(c.alias) + ')' : ''}</button></div>
+      ${user.profile.name ? '' : '<p class="small muted" style="margin:0">Add your first name in <b>Me</b> to show it here.</p>'}
+      <div class="section-kicker">What you talk about</div>
+      <div class="chipset">${focusChoices(F).map(n => `<button class="chip ${F.includes(n) ? 'on' : ''}" data-cm-fedit="${esc(n)}" aria-pressed="${F.includes(n)}">${esc(n)}</button>`).join('')}</div>
+      <p class="small muted">Cura uses these, and what you log, when it sorts the groups each day.</p>
+      ${changed ? `<button class="btn primary small" data-action="cm-focus-save" ${F.length ? '' : 'disabled'}>Save</button>` : ''}
+      <div class="divider"></div>
+      <button class="btn danger" data-action="cm-leave" style="width:100%">${ui.cm.confirmLeave ? 'Tap again to leave the community' : 'Leave the community'}</button>`;
+  }
+
+  // ---------- Calendar subscription ----------
+  function calLinks() {
+    if (!ui.calUrl) return null;
+    const webcal = ui.calUrl.replace(/^https?:/, 'webcal:');
+    return { webcal, google: `https://calendar.google.com/calendar/r?cid=${encodeURIComponent(webcal)}` };
+  }
+  async function ensureCalUrl() {
+    if (ui.calUrl || ui.calLoading || ui.calTried) return;
+    ui.calLoading = true; ui.calTried = true;
+    try { const d = await api('calendar-link', {}, { keepUser: true }); ui.calUrl = d.url || ''; } catch (e) { toast(e.message); }
+    ui.calLoading = false;
+    if (ui.sheet) renderSheet();
+  }
+  function calButtons() {
+    const L = calLinks();
+    if (!L) return `<button class="btn primary" disabled>${ui.calLoading || !ui.calTried ? 'Getting your calendar link…' : 'Calendar link unavailable'}</button>`;
+    return `<a class="btn primary" href="${esc(L.webcal)}">📅 Apple Calendar</a><a class="btn ghost" href="${esc(L.google)}" target="_blank" rel="noopener">Google Calendar</a>`;
+  }
+  function calSheetHtml() {
+    return `<div class="sheet-head"><h2 id="sheetTitle" class="card-title">📅 Your plan on your calendar</h2><button class="icon-btn" data-action="sheet-close" aria-label="Close">×</button></div>
+      <p class="card-sub">Cura keeps a private calendar with the ideas in your plan (at the time of day they're for), a one-week check-in, and your next appointment. It updates by itself.</p>
+      <div class="cal-btns">${calButtons()}${ui.calUrl ? '<button class="btn ghost" data-action="cal-copy">Copy link</button>' : ''}</div>
+      <p class="small muted" style="margin-top:12px;line-height:1.5">On iPhone, tap <b>Apple Calendar</b>, then <b>Subscribe</b>. Google Calendar can take several hours to show changes. Keep the link to yourself: anyone who has it can see your plan.</p>`;
+  }
+
   // ---------- Bottom sheets: quick log and welcome tour ----------
   const COMMON_SYMPTOMS = ['Hot flashes', 'Night sweats', 'Trouble sleeping', 'Brain fog', 'Mood swings', 'Anxiety', 'Headache', 'Cramps', 'Joint pain', 'Fatigue', 'Bloating', 'Heavier flow'];
   const MOODS = [['Rough', '😣'], ['Meh', '😕'], ['Okay', '🙂'], ['Good', '😊'], ['Great', '🤩']];
@@ -496,6 +760,7 @@
   }
   function closeSheet() {
     if (ui.sheet === 'welcome') { saveObName(); store.set(OB_KEY, '1'); }
+    if (ui.sheet === 'cm') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; }
     ui.sheet = null; renderSheet();
   }
   function quickLogHtml() {
@@ -528,7 +793,7 @@
       render();
     } catch (e) { L.saving = false; toast(e.message); renderSheet(); }
   }
-  const obSteps = () => ['meet', 'name', ...(isStandalone() ? [] : ['install']), 'remind'];
+  const obSteps = () => ['meet', 'name', ...(isStandalone() ? [] : ['install']), 'remind', 'plan'];
   function welcomeHtml() {
     const steps = obSteps();
     const step = steps[Math.min(ui.ob, steps.length - 1)], last = ui.ob >= steps.length - 1;
@@ -536,7 +801,7 @@
     const body = {
       meet: `<div class="ob-art"><div class="avatar big">c</div></div><h2 id="sheetTitle" class="ob-title">Meet Cura</h2>
         <p class="ob-text">Text Cura how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
-        <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
+        <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>👥 <span>Swap what helps with people like you</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
         <p class="ob-hint">Prefer dark mode? Pick it here, or anytime in <b>Me → Appearance</b>.</p>${themeSeg()}`,
       name: `<div class="ob-art">👋</div><h2 id="sheetTitle" class="ob-title">What should we call you?</h2>
         <p class="ob-text">Cura will use your first name now and then. You can skip this or change it anytime in <b>Me</b>.</p>
@@ -545,8 +810,13 @@
       install: `<div class="ob-art">📲</div><h2 id="sheetTitle" class="ob-title">Keep Cura one tap away</h2>${installHelp()}`,
       remind: `<div class="ob-art">🔔</div><h2 id="sheetTitle" class="ob-title">A gentle daily nudge</h2>
         <p class="ob-text">Cura can remind you once a day to check in. It's skipped on days you've already logged something.</p>
-        ${canRemind ? (user.reminder && user.reminder.enabled ? '<p class="pill">Reminder is on ✓</p>' : `<button class="btn primary" data-action="ob-remind" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Remind me at 8 PM'}</button>`) : `<p class="card-sub">${isIOS() ? 'Once Cura is on your Home Screen, open it from there and turn this on in <b>Me</b>.' : 'You can turn this on later in <b>Me</b>.'}</p>`}`
+        ${canRemind ? (user.reminder && user.reminder.enabled ? '<p class="pill">Reminder is on ✓</p>' : `<button class="btn primary" data-action="ob-remind" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Remind me at 8 PM'}</button>`) : `<p class="card-sub">${isIOS() ? 'Once Cura is on your Home Screen, open it from there and turn this on in <b>Me</b>.' : 'You can turn this on later in <b>Me</b>.'}</p>`}`,
+      plan: `<div class="ob-art">🌿</div><h2 id="sheetTitle" class="ob-title">Ideas from people like you</h2>
+        <p class="ob-text">In <b>Community</b>, chat with a small group whose symptoms are like yours. Ideas you choose to try show up on Today each day, and on your calendar if you like.</p>
+        <div class="cal-btns" style="max-width:320px;margin:0 auto">${calButtons()}</div>
+        <p class="ob-hint">You can also do this later in <b>Me → Calendar</b>.</p>`
     }[step];
+    if (step === 'plan') ensureCalUrl();
     return `<div class="ob">${body}</div>
       <div class="dots-row" aria-hidden="true">${steps.map((_, i) => `<i class="${i === ui.ob ? 'on' : ''}"></i>`).join('')}</div>
       <div class="row"><button class="btn ghost" data-action="${ui.ob ? 'ob-back' : 'sheet-close'}">${ui.ob ? 'Back' : 'Skip'}</button><button class="btn primary" data-action="${last ? 'sheet-close' : 'ob-next'}">${last ? 'Start chatting' : 'Next'}</button></div>`;
@@ -566,7 +836,7 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet');
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${ui.sheet === 'log' ? quickLogHtml() : welcomeHtml()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml }[ui.sheet]()}</div>`;
     if (!wasOpen) root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
   }
 
@@ -625,6 +895,19 @@
     if (tp) { applyTheme(tp.dataset.themePick); if (ui.sheet) renderSheet(); else render(); return; }
     const vt = e.target.closest('[data-visit]');
     if (vt) { ui.visitTab = vt.dataset.visit; render(); return; }
+    const cf = e.target.closest('[data-cm-focus]');
+    if (cf && ui.cm.join) { const n = cf.dataset.cmFocus, F = ui.cm.join.focus, i = F.indexOf(n); if (i >= 0) F.splice(i, 1); else F.push(n); renderInPlace(); return; }
+    const can = e.target.closest('[data-cm-anon]');
+    if (can && ui.cm.join) { ui.cm.join.anonymous = can.dataset.cmAnon === '1'; renderInPlace(); return; }
+    const ctab = e.target.closest('[data-cm-tab]');
+    if (ctab) { ui.cm.tab = ctab.dataset.cmTab; render(); if (ui.cm.tab === 'ideas') loadIdeas(); else loadGroup(false); return; }
+    const fe = e.target.closest('[data-cm-fedit]');
+    if (fe && ui.cm.focusEdit) { const n = fe.dataset.cmFedit, F = ui.cm.focusEdit, i = F.indexOf(n); if (i >= 0) F.splice(i, 1); else F.push(n); renderSheet(); return; }
+    const capp = e.target.closest('[data-cm-appear]');
+    if (capp && !capp.disabled) {
+      try { await api('community-settings', { anonymous: capp.dataset.cmAppear === '1' }); toast('Saved'); await loadGroup(true); } catch (err) { toast(err.message); }
+      renderSheet(); return;
+    }
     if (ui.log && ui.sheet === 'log') {
       const mood = e.target.closest('[data-mood]'), sym = e.target.closest('[data-sym]'), ld = e.target.closest('[data-log-date]');
       if (mood) { ui.log.mood = ui.log.mood === mood.dataset.mood ? '' : mood.dataset.mood; renderSheet(); return; }
@@ -635,6 +918,7 @@
     if (!a) return;
     const act = a.dataset.action;
     if (act !== 'reset') ui.confirmReset = false;
+    if (act !== 'cm-leave') ui.cm.confirmLeave = false;
     if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
     else if (act === 'older') loadOlder();
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
@@ -673,6 +957,55 @@
     else if (act === 'share-agenda') { if (navigator.share) navigator.share({ title: 'My visit agenda', text: agendaText() }).catch(() => {}); else copy(agendaText(), 'Agenda copied'); }
     else if (act === 'print') window.print();
     else if (act === 'copy-link') copy(a.dataset.link, 'Private link copied');
+    else if (act === 'cm-join') {
+      const J = ui.cm.join;
+      if (!J || J.busy) return;
+      if (!J.focus.length) { toast('Pick at least one thing to talk about'); return; }
+      if (!J.anonymous && !J.name.trim()) { toast('Add your first name, or choose Anonymously'); $('#cmName')?.focus(); return; }
+      J.busy = true; render();
+      try {
+        const d = await api('community-join', { focus: J.focus, anonymous: J.anonymous, name: J.name.trim() });
+        ui.cm = { ...freshCm(), group: d.group, messages: d.messages || [], loaded: true };
+        toast(`Welcome to ${d.group ? d.group.name : 'your group'} 💚`);
+      } catch (err) { J.busy = false; toast(err.message); }
+      render();
+    }
+    else if (act === 'cm-settings') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; ui.sheet = 'cm'; renderSheet(); if (!ui.cm.group) loadGroup(true); }
+    else if (act === 'cm-focus-save') {
+      try { await api('community-settings', { focus: ui.cm.focusEdit }); ui.cm.focusEdit = null; toast('Saved. Cura will use these when it sorts the groups.'); } catch (err) { toast(err.message); }
+      renderSheet();
+    }
+    else if (act === 'cm-leave') {
+      if (!ui.cm.confirmLeave) { ui.cm.confirmLeave = true; renderSheet(); return; }
+      try { await api('community-leave'); ui.cm = freshCm(); ui.sheet = null; toast('You left the community. You can rejoin anytime.'); } catch (err) { toast(err.message); }
+      render();
+    }
+    else if (act === 'cm-notice') { user.community.notice = null; render(); api('community-settings', { clearNotice: true }, { keepUser: true }).catch(() => {}); }
+    else if (act === 'cm-ideas') { ui.cm.tab = 'ideas'; go('community'); loadIdeas(); }
+    else if (act === 'plan-add') {
+      a.disabled = true;
+      try {
+        await api('plan-add', { tipId: a.dataset.tip });
+        if (ui.cm.ideas) ui.cm.ideas = ui.cm.ideas.filter(i => i.id !== a.dataset.tip);
+        toast("Added to your plan 🌿 You'll see it on Today");
+      } catch (err) { toast(err.message); }
+      if (route === 'chat') refreshThread(); else render();
+    }
+    else if (act === 'tip-hide') {
+      if (ui.cm.ideas) ui.cm.ideas = ui.cm.ideas.filter(i => i.id !== a.dataset.tip);
+      render();
+      api('tip-hide', { tipId: a.dataset.tip }).catch(err => toast(err.message));
+    }
+    else if (act === 'idea-visit') guarded(() => tool('add_visit_note', { text: `Ask about: ${a.dataset.title} (for ${a.dataset.symptom}). Some people in the Cura community said it helped them.` }), 'Added to your list for your next visit');
+    else if (act === 'plan-done') {
+      const p = user.plan.find(x => x.id === a.dataset.id);
+      if (p) { p.done = p.done.includes(today()) ? p.done.filter(d => d !== today()) : [...p.done, today()]; render(); }
+      api('plan-done', { item: a.dataset.id, date: today() }).catch(err => { toast(err.message); render(); });
+    }
+    else if (act === 'plan-outcome') guarded(() => api('plan-outcome', { item: a.dataset.id, how: a.dataset.how }), a.dataset.how === 'not_much' ? "Thanks for telling Cura. It's off your plan now." : 'Great! It stays in your plan as a daily habit 🌿');
+    else if (act === 'plan-remove') guarded(() => api('plan-remove', { item: a.dataset.id }), 'Removed from your plan');
+    else if (act === 'cal-open') { ui.calTried = false; ui.sheet = 'cal'; renderSheet(); ensureCalUrl(); }
+    else if (act === 'cal-copy') copy(ui.calUrl, 'Calendar link copied');
     else if (act === 'reminder-on') {
       ui.reminderBusy = true; render();
       try { await enableReminders(); toast(`Reminder on: around ${hourLabel(user.reminder.hour)} each day`); } catch (err) { toast(err.message); }
@@ -686,13 +1019,14 @@
     }
     else if (act === 'reset') {
       if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
-      ui.confirmReset = false; guarded(() => api('reset'), 'Everything erased');
+      ui.confirmReset = false; ui.cm = freshCm(); ui.calUrl = ''; guarded(() => api('reset'), 'Everything erased');
     }
   });
 
   document.addEventListener('submit', e => {
     const form = e.target;
     if (form.id === 'composer') { e.preventDefault(); const box = $('#msgInput'); const t = box.value; box.value = ''; autoGrow(box); $('#sendBtn').disabled = true; sendMessage(t); return; }
+    if (form.id === 'groupComposer') { e.preventDefault(); const box = $('#groupInput'); const t = box.value; box.value = ''; autoGrow(box); $('#groupSend').disabled = true; postToGroup(t); return; }
     const kind = form.dataset.form; if (!kind) return;
     e.preventDefault();
     const d = new FormData(form);
@@ -704,6 +1038,8 @@
   document.addEventListener('input', e => {
     const el = e.target;
     if (el.id === 'msgInput') { autoGrow(el); $('#sendBtn').disabled = !el.value.trim(); }
+    if (el.id === 'groupInput') { autoGrow(el); $('#groupSend').disabled = !el.value.trim(); }
+    if (el.matches('[data-cm-name]') && ui.cm.join) ui.cm.join.name = el.value;
     if (el.id === 'symSev') $('#sevOut').textContent = el.value;
     if (el.matches('[data-log-other]') && ui.log) {
       const had = !!(ui.log.syms.length || ui.log.other.trim());
@@ -724,6 +1060,7 @@
     if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
     if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); saveObName(); ui.ob++; renderSheet(); return; }
     if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
+    if (e.target.id === 'groupInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#groupComposer').requestSubmit(); }
   });
   document.addEventListener('change', e => {
     const el = e.target;
@@ -742,15 +1079,16 @@
     if (document.body.classList.contains('kb-open')) { window.scrollTo(0, 0); scrollThread(); }
   }
   if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
-  const isTyping = el => el && el.id === 'msgInput';
+  const isTyping = el => el && (el.id === 'msgInput' || el.id === 'groupInput');
   document.addEventListener('focusin', e => { if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); } });
-  document.addEventListener('focusout', e => { if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); } }, 80); });
+  document.addEventListener('focusout', e => { if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); scrollThread(); } }, 80); });
 
   // ---------- Start ----------
   render();
   (async () => {
     try {
-      await api('load');
+      const d = await api('load');
+      ui.unread = d.communityUnread || 0; updateBadge();
       // Bring over entries saved by the old browser-only version of the site.
       const old = store.get(OLD_KEY);
       if (old && !hasData(user)) {

@@ -1,5 +1,6 @@
 // Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
 // Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
+import { freshCommunity, addDays, daysBetween, whenLabel } from './community-logic.js';
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
@@ -20,6 +21,8 @@ Acknowledging isn't enough on its own: a reply that only says "noted, hope it ge
 - *Connect it to their history.* If <patterns> or <recent_entries> show something related, mention it briefly: "That's the third tired day this week, and your sleep's been rough too."
 - *Something they can do right now.* When they're struggling, offer one small, practical comfort idea that fits: putting their feet up, water and a snack, a short walk, slow breathing, cooling down (layers, a cool cloth, a fan) for hot flashes, winding down without screens before bed. Keep it to one idea, offered gently, not a lecture.
 - *Help with what's coming.* If they have an appointment soon or something keeps coming up, offer to add it to their list for the visit.
+- *An idea from people like them.* If <community_ideas> has one that fits what they're dealing with right now, mention it in a few words ("A few members found a fan by the bed really helps") and call suggest_idea so they can add it to their plan with one tap. One per reply at most, only when it fits, and it counts as your comfort idea.
+- *Their plan.* If <context> lists ideas they're trying, you can ask how one is going now and then (not every day) or link it to what they just said.
 A good reply often combines a comforting idea with one gentle question. Ending with a question is good when it moves things forward or helps them feel heard; don't ask one when they're clearly wrapping up ("that's all", "thanks, bye") — then close warmly in one short line.
 
 Make answering easy: when the show_quick_replies tool is available and your question has a few likely answers, call it (before you write your message) so they can tap instead of typing. An intensity question gets kind "scale"; yes/no or a few choices get "options" (short labels in their voice, like "Yes, twice" or "Not really"); "which of these" gets "multi". Your text must still ask the question. Don't attach buttons to open questions where they'd want to explain in their own words.
@@ -179,6 +182,13 @@ export const QUICK_REPLY_TOOL = {
   }
 };
 
+// App only: an idea card (from <community_ideas>) under Cura's message, with an "Add to my plan" button.
+export const IDEA_TOOL = {
+  name: 'suggest_idea',
+  description: 'Show one idea from <community_ideas> as a card under your message, with a button to add it to their daily plan. Use its id. At most once per reply; mention the idea in your text too.',
+  input_schema: { type: 'object', properties: { tip_id: { type: 'string', description: 'The id from <community_ideas>.' } }, required: ['tip_id'] }
+};
+
 // Checks and trims what Cura asked to show; returns null if it isn't usable.
 export function cleanQuickReplies(input) {
   const kind = input && input.kind;
@@ -198,6 +208,7 @@ export function freshUser() {
     agenda: { summary: '', topics: [], questions: [] },
     followup: { summary: '', steps: [], questions: [] },
     reminder: { enabled: false, hour: 20, tz: '', subscriptions: [], lastSent: '' },
+    community: freshCommunity(), plan: [], offers: {}, calToken: '',
     history: [], actionLog: [], transcript: [], createdAt: new Date().toISOString()
   };
 }
@@ -211,7 +222,10 @@ export function normalizeUser(user) {
   out.followup = { ...base.followup, ...(out.followup || {}) };
   out.reminder = { ...base.reminder, ...(out.reminder || {}) };
   if (!Array.isArray(out.reminder.subscriptions)) out.reminder.subscriptions = [];
-  for (const k of ['cycleStarts', 'symptoms', 'checkins', 'preNotes', 'postNotes', 'history', 'actionLog', 'transcript']) if (!Array.isArray(out[k])) out[k] = [];
+  out.community = { ...base.community, ...(out.community || {}) };
+  for (const k of ['focus', 'hidden']) if (!Array.isArray(out.community[k])) out.community[k] = [];
+  if (!out.offers || typeof out.offers !== 'object') out.offers = {};
+  for (const k of ['cycleStarts', 'symptoms', 'checkins', 'preNotes', 'postNotes', 'history', 'actionLog', 'transcript', 'plan']) if (!Array.isArray(out[k])) out[k] = [];
   return out;
 }
 
@@ -324,7 +338,8 @@ function contextNote(user, today, channel) {
     lastPeriod ? `Last period start: ${lastPeriod.date}.` : 'No period start saved yet.',
     user.profile.appointmentDate ? `Next appointment: ${user.profile.appointmentDate}${user.profile.clinician ? ' with ' + user.profile.clinician : ''}.` : '',
     !user.history.length && channel === 'app' ? 'This is their first message. The app already showed your welcome message introducing you, so skip any introduction.' : '',
-    !user.history.length && channel !== 'app' ? 'This is their first message to you.' : ''
+    !user.history.length && channel !== 'app' ? 'This is their first message to you.' : '',
+    planNote(user, today)
   ].filter(Boolean).join(' ');
   const entries = [
     ...recentSym.map(s => `- symptom id=${s.id} ${s.date}: ${s.name}, ${sevText(s)}${s.impact ? `, impact: ${s.impact}` : ''}`),
@@ -332,6 +347,17 @@ function contextNote(user, today, channel) {
   ].join('\n') || '(nothing in the last 3 days)';
   const actions = (user.actionLog || []).slice(-10).map(a => `- ${a}`).join('\n') || '(none yet)';
   return `<context>${facts}</context>\n<patterns>\n${patterns(user, today)}\n</patterns>\n<recent_entries>\n${entries}\n</recent_entries>\n<your_recent_actions>\n${actions}\n</your_recent_actions>`;
+}
+
+// Ideas from the community they chose to try, so Cura can ask how they're going.
+function planNote(user, today) {
+  const items = (user.plan || []).filter(p => p.status === 'active').map(p => {
+    const day = daysBetween(p.start, today) + 1;
+    const progress = p.kept ? 'kept as a habit, it helped' : day > 7 ? 'a week is up, check-in due' : `day ${day} of 7`;
+    return `"${p.title}" for ${p.symptom} (${whenLabel(p.when).toLowerCase()}, ${progress}${(p.done || []).includes(today) ? ', done today' : ''})`;
+  });
+  const group = user.community && user.community.joined ? 'They are in a Cura community group.' : '';
+  return [group, items.length ? `Ideas they're trying from the community: ${items.join('; ')}.` : ''].filter(Boolean).join(' ');
 }
 
 // A compact two-week summary so Cura can connect today's message to what's been happening.
@@ -368,7 +394,8 @@ function describeAction(name, input, result, at) {
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onQuickReplies?: (qr) => void }
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void,
+//         onQuickReplies?: (qr) => void, note?: string (extra context), ideas?: idea cards, onIdea?: (idea) => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
   if (text.trim().toUpperCase() === 'DELETE ALL') {
@@ -379,12 +406,13 @@ export async function handleIncoming(user, text, today, deps) {
 
   const history = (user.history || []).slice(-HISTORY_TURNS);
   const messages = history.map(h => ({ role: h.role, content: h.text }));
-  messages.push({ role: 'user', content: `${contextNote(user, today, deps.channel)}\n\n${text}` });
+  messages.push({ role: 'user', content: `${contextNote(user, today, deps.channel)}${deps.note ? '\n' + deps.note : ''}\n\n${text}` });
   const at = new Date().toISOString();
   const actions = [];
 
   let reply = '', earlierText = '';
-  const tools = deps.channel === 'app' ? [...TOOLS, QUICK_REPLY_TOOL] : TOOLS;
+  // The tool list stays the same every turn (so the prompt cache holds); suggest_idea just fails when there are no ideas.
+  const tools = deps.channel === 'app' ? [...TOOLS, QUICK_REPLY_TOOL, IDEA_TOOL] : TOOLS;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const params = {
       model: deps.model,
@@ -417,6 +445,11 @@ export async function handleIncoming(user, text, today, deps) {
           if (qr && deps.onQuickReplies) deps.onQuickReplies(qr);
           return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(qr ? { ok: true, shown: true } : { ok: false, error: 'Need kind scale, or 2+ options.' }), is_error: !qr };
         }
+        if (t.name === IDEA_TOOL.name) {
+          const idea = (deps.ideas || []).find(i => i.id === (t.input || {}).tip_id);
+          if (idea && deps.onIdea) deps.onIdea(idea);
+          return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(idea ? { ok: true, shown: true } : { ok: false, error: 'Use an id from <community_ideas>.' }), is_error: !idea };
+        }
         try { result = runTool(user, t.name, t.input, today); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
         const line = t.name === 'get_my_history' ? '' : describeAction(t.name, t.input || {}, result, at);
         if (line) actions.push(line);
@@ -425,7 +458,7 @@ export async function handleIncoming(user, text, today, deps) {
     });
   }
 
-  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions)>/g, '').trim().slice(0, 4000);
+  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions|patterns|community_note|community_ideas)>/g, '').trim().slice(0, 4000);
   user.history = [...history, { role: 'user', text }, { role: 'assistant', text: reply }].slice(-HISTORY_TURNS);
   user.actionLog = [...(user.actionLog || []), ...actions].slice(-30);
   return reply;

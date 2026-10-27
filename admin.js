@@ -18,6 +18,7 @@
 
   let pw = store.get(PW_KEY) || '';
   let data = null, query = '', confirmId = '';
+  let cm = null, busy = '';
 
   async function api(action, extra = {}) {
     const res = await fetch('/api/admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password: pw, action, ...extra }) });
@@ -28,6 +29,7 @@
   }
 
   const top = (extra = '') => `<div class="top"><div class="brand"><span class="brand-mark">c</span><span class="brand-name">cura admin</span></div><span class="spacer"></span>${extra}</div>`;
+  const tabs = on => `<div class="seg" style="margin:0;min-width:220px"><button class="${on === 'users' ? 'on' : ''}" data-act="go-users">Users</button><button class="${on === 'community' ? 'on' : ''}" data-act="go-community">Community</button></div>`;
 
   function renderLogin(error = '') {
     $('#root').innerHTML = `<div class="login"><div class="card">
@@ -51,7 +53,7 @@
     const bars = s.perDay.map(d => `<div class="col" data-tip="${esc(new Date(d.date + 'T12:00:00').toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }))}: ${d.messages} message${d.messages === 1 ? '' : 's'}" aria-label="${esc(d.date)}: ${d.messages} messages"><div class="bar" style="height:${Math.round(d.messages / max * 100)}%"></div></div>`).join('');
     const xs = s.perDay.map((d, i) => `<span>${i % 2 === 0 || s.perDay.length < 8 ? new Date(d.date + 'T12:00:00').getDate() : ''}</span>`).join('');
     const tests = data.users.filter(u => u.test).length;
-    $('#root').innerHTML = `${top('<button class="btn small ghost" data-act="refresh">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>')}
+    $('#root').innerHTML = `${top(`${tabs('users')}<button class="btn small ghost" data-act="refresh">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>`)}
       ${tests ? `<div class="card row" style="margin-bottom:14px"><span class="small">🧪 ${tests} test user${tests === 1 ? '' : 's'} created by Claude while testing Cura.</span><button class="btn small danger" data-act="delete-test">${confirmId === 'TEST' ? 'Tap again to delete them' : 'Delete test users'}</button></div>` : ''}
       <div class="tiles">${tiles}</div>
       <div class="card"><div class="row"><h2 class="card-title">Messages to Cura per day</h2><span class="small muted">Last 14 days · hover a bar for the count</span></div>
@@ -116,6 +118,88 @@
     const c = $('#convo'); if (c) c.scrollTop = c.scrollHeight;
     window.scrollTo(0, 0);
   }
+  // ---------- Community: tips Cura found, starter tips, groups ----------
+  const WHEN = ['morning', 'midday', 'evening', 'bedtime', 'anytime'];
+  const HOW = { a_lot: 'Helped a lot', some: 'Helped some', not_much: 'Not much', made_worse: 'Made it worse', unclear: 'Not said yet' };
+  async function loadCommunity() {
+    $('#root').innerHTML = `${top(tabs('community'))}<p class="muted">Loading…</p>`;
+    try { cm = await api('community'); renderCommunity(); } catch (e) { alertBack(e.message); }
+  }
+  const sel = (name, value, opts) => `<select class="select" data-f="${name}">${opts.map(([v, l]) => `<option value="${v}" ${v === value ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
+  function tipFields(t) {
+    return `<div class="form-grid" style="margin-top:10px">
+      <div class="field"><label>Title (what to try)</label><input class="input" data-f="title" value="${esc(t.title)}"></div>
+      <div class="field"><label>Symptom</label><input class="input" data-f="symptom" value="${esc(t.symptom)}"></div>
+      <div class="field"><label>Time of day</label>${sel('when', t.when, WHEN.map(w => [w, w[0].toUpperCase() + w.slice(1)]))}</div>
+      <div class="field"><label>Kind</label>${sel('kind', t.kind, [['everyday', 'Everyday idea (can go in a plan)'], ['medical', 'Medical (shown as "ask your clinician")']])}</div>
+      <div class="field full"><label>Details</label><input class="input" data-f="details" value="${esc(t.details)}"></div>
+      <div class="field full"><label>Why it may help ${t.why ? '' : '<span class="muted">(Cura writes this when you approve)</span>'}</label><textarea class="textarea" data-f="why" style="min-height:60px">${esc(t.why)}</textarea></div>
+    </div>`;
+  }
+  function tipCardHtml(t) {
+    const src = t.source === 'team' ? 'Starter tip from the team' : `${esc(t.authorName || 'A member')}${t.groupName ? ' in ' + esc(t.groupName) : ''} · ${esc(HOW[t.howWell] || '')}`;
+    const stats = `${t.reports ? `${t.reports} more member${t.reports === 1 ? '' : 's'} mentioned it · ` : ''}added to ${t.stats.added} plan${t.stats.added === 1 ? '' : 's'} · ${t.stats.tried ? `${t.stats.helped} of ${t.stats.tried} said it helped` : 'no check-ins yet'}`;
+    const buttons = t.status === 'pending'
+      ? `<button class="btn small primary" data-act="tip" data-status="approved" data-id="${t.id}" ${busy === t.id ? 'disabled' : ''}>${busy === t.id ? 'Saving…' : 'Approve'}</button><button class="btn small ghost" data-act="tip" data-status="rejected" data-id="${t.id}">Reject</button>`
+      : `<button class="btn small primary" data-act="tip" data-id="${t.id}" ${busy === t.id ? 'disabled' : ''}>${busy === t.id ? 'Saving…' : 'Save changes'}</button><button class="btn small ghost" data-act="tip" data-status="pending" data-id="${t.id}">Unpublish</button><button class="btn small danger" data-act="tip-del" data-id="${t.id}">${confirmId === 'tip' + t.id ? 'Tap again to delete' : 'Delete'}</button>`;
+    return `<div class="list-item" data-tip="${t.id}" style="display:block">
+      <div class="row"><strong>${esc(t.title)}</strong><span class="pill">${esc(t.symptom)}</span></div>
+      <div class="li-meta">${src} · ${when(t.createdAt)}</div>
+      ${t.source !== 'team' && t.quote ? `<div class="li-note">“${esc(t.quote)}”</div>` : ''}
+      ${t.status === 'approved' ? `<div class="li-meta">${esc(stats)}</div>` : ''}
+      <details ${t.status === 'pending' ? 'open' : ''}><summary>${t.status === 'pending' ? 'Check the details' : 'Edit'}</summary>${tipFields(t)}</details>
+      <div class="row-wrap" style="margin-top:10px">${buttons}</div>
+    </div>`;
+  }
+  function renderCommunity() {
+    const pending = cm.tips.filter(t => t.status === 'pending'), live = cm.tips.filter(t => t.status === 'approved'), rejected = cm.tips.filter(t => t.status === 'rejected');
+    const members = cm.groups.reduce((n, g) => n + g.members.length, 0);
+    const tiles = [['Groups', cm.groups.length], ['Members', members], ['Tips to review', pending.length], ['Live tips', live.length]].map(([l, v]) => `<div class="card tile"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
+    $('#root').innerHTML = `${top(`${tabs('community')}<button class="btn small ghost" data-act="go-community">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>`)}
+      <div class="tiles" style="grid-template-columns:repeat(4,minmax(0,1fr))">${tiles}</div>
+      <div class="detail-grid">
+        <div>
+          <div class="card"><h2 class="card-title">Tips to review (${pending.length})</h2><p class="card-sub">Cura found these in group chats. Check the wording, then approve so Cura can suggest them to people with matching symptoms.</p>
+            ${pending.map(tipCardHtml).join('') || '<p class="small muted">Nothing to review right now.</p>'}</div>
+          <div class="card"><h2 class="card-title">Add starter tips</h2><p class="card-sub">Write one or more tips in plain words, one per line. Cura structures them and writes why they may help. They go live straight away.</p>
+            <textarea class="textarea" id="teamTips" placeholder="A cool shower before bed for night sweats&#10;A 10-minute walk after lunch for the afternoon slump"></textarea>
+            <button class="btn primary" data-act="tip-add" style="margin-top:10px" ${busy === 'add' ? 'disabled' : ''}>${busy === 'add' ? 'Cura is writing…' : 'Add tips'}</button></div>
+          <div class="card"><h2 class="card-title">Live tips (${live.length})</h2>${live.map(tipCardHtml).join('') || '<p class="small muted">No live tips yet.</p>'}
+            ${rejected.length ? `<details><summary>Rejected (${rejected.length})</summary>${rejected.map(t => `<div class="li-meta">${esc(t.title)} · ${esc(t.symptom)} <button class="btn small ghost" data-act="tip" data-status="pending" data-id="${t.id}">Restore</button></div>`).join('')}</details>` : ''}</div>
+        </div>
+        <div>
+          <div class="card"><div class="row"><h2 class="card-title">Groups</h2></div><p class="card-sub">Cura sorts people into groups by their symptoms every day at 10 AM New York time, and posts a question of the day.</p>
+            <div class="row-wrap"><button class="btn small ghost" data-act="regroup" ${busy === 'regroup' ? 'disabled' : ''}>${busy === 'regroup' ? 'Sorting…' : 'Re-sort groups now'}</button><button class="btn small ghost" data-act="questions" ${busy === 'questions' ? 'disabled' : ''}>${busy === 'questions' ? 'Posting…' : "Post today's questions"}</button></div>
+            <p class="small muted" id="cmResult"></p>
+            ${cm.groups.map(g => `<div class="list-item" style="display:block"><div class="row"><strong>${esc(g.name)}</strong><span class="small muted">${g.members.length} members · ${g.messages} messages</span></div>
+              <div class="li-meta">${esc(g.focus)}</div>
+              <div class="li-meta">Common: ${g.common.map(c => `${esc(c.name)} (${c.members}${c.avg ? `, avg ${c.avg}` : ''})`).join(', ') || '—'}</div>
+              <div class="li-note">${g.members.map(m => `${esc(m.name)}${m.focus.length ? ` <span class="muted">(${esc(m.focus.join(', '))})</span>` : ''}`).join(' · ')}</div>
+              <button class="btn small ghost" data-act="group-msgs" data-id="${g.id}" style="margin-top:8px">View messages</button></div>`).join('') || '<p class="small muted">No groups yet. The first one is made when someone joins.</p>'}</div>
+        </div>
+      </div>`;
+  }
+  function tipFieldsFrom(id) {
+    const box = document.querySelector(`[data-tip="${id}"]`), out = {};
+    if (box) box.querySelectorAll('[data-f]').forEach(el => { out[el.dataset.f] = el.value; });
+    return out;
+  }
+  async function openGroup(id) {
+    const g = cm.groups.find(x => x.id === id);
+    $('#root').innerHTML = `${top(tabs('community'))}<p class="muted">Loading…</p>`;
+    let d;
+    try { d = await api('group-msgs', { groupId: id }); } catch (e) { alertBack(e.message); return; }
+    const msgs = d.messages.map((m, i) => {
+      const prev = d.messages[i - 1];
+      const stamp = !prev || new Date(m.at) - new Date(prev.at) > 3600000 ? `<div class="stamp">${esc(fullTime(m.at))}</div>` : '';
+      return `${stamp}<div class="sender">${esc(m.name)}${m.from !== 'cura' ? ` <button class="btn small ghost" style="min-height:22px;padding:0 6px;font-size:11px" data-act="msg-del" data-gid="${id}" data-id="${m.id}">${confirmId === 'msg' + m.id ? 'Tap again' : 'Delete'}</button>` : ''}</div><div class="msg ${m.from === 'cura' ? 'them cura' : 'them'} tail">${fmtMsg(m.text)}</div>`;
+    }).join('') || '<p class="small muted">No messages yet.</p>';
+    $('#root').innerHTML = `${top(`<button class="btn small ghost" data-act="go-community">← Community</button>`)}
+      <div class="page-head"><div class="eyebrow">Group</div><h1 class="title">${esc(g ? g.name : 'Group')}</h1><p class="sub">${esc(g ? g.focus : '')}</p></div>
+      <div class="card"><div class="convo" id="convo">${msgs}</div></div>`;
+    const c = $('#convo'); if (c) c.scrollTop = c.scrollHeight;
+  }
+
   function alertBack(msg) { $('#root').innerHTML = `${top('<button class="btn small ghost" data-act="back">← All users</button>')}<p class="err">${esc(msg)}</p>`; }
 
   document.addEventListener('submit', e => { if (e.target.id === 'login') { e.preventDefault(); pw = $('#pw').value; load(); } });
@@ -124,7 +208,34 @@
     const row = e.target.closest('tr[data-id]'); if (row) { openUser(row.dataset.id); return; }
     const a = e.target.closest('[data-act]'); if (!a) return;
     const act = a.dataset.act;
-    if (act !== 'delete' && act !== 'delete-test') confirmId = '';
+    if (!['delete', 'delete-test', 'tip-del', 'msg-del'].includes(act)) confirmId = '';
+    if (act === 'go-users') load();
+    if (act === 'go-community') loadCommunity();
+    if (act === 'group-msgs') openGroup(a.dataset.id);
+    if (act === 'tip') {
+      const id = a.dataset.id, fields = tipFieldsFrom(id); // read the edits before redrawing
+      busy = id; renderCommunity();
+      api('tip-save', { id, fields, status: a.dataset.status || undefined }).then(() => { busy = ''; loadCommunity(); }).catch(err => { busy = ''; alert(err.message); renderCommunity(); });
+    }
+    if (act === 'tip-del') {
+      const id = a.dataset.id;
+      if (confirmId !== 'tip' + id) { confirmId = 'tip' + id; a.textContent = 'Tap again to delete'; return; }
+      confirmId = ''; api('tip-save', { id, remove: true }).then(loadCommunity).catch(err => alert(err.message));
+    }
+    if (act === 'tip-add') {
+      const text = $('#teamTips').value.trim(); if (!text) return;
+      busy = 'add'; renderCommunity(); $('#teamTips').value = text;
+      api('tip-add', { text }).then(() => { busy = ''; loadCommunity(); }).catch(err => { busy = ''; renderCommunity(); $('#teamTips').value = text; alert(err.message); });
+    }
+    if (act === 'regroup' || act === 'questions') {
+      busy = act; renderCommunity();
+      api(act).then(r => { busy = ''; return loadCommunity().then(() => { const el = $('#cmResult'); if (el) el.textContent = act === 'regroup' ? (r.result.changed ? `Moved ${r.result.moved} member(s) into ${r.result.groups} group(s).` : 'No changes needed today.') : `Posted ${r.posted} question(s).`; }); }).catch(err => { busy = ''; renderCommunity(); alert(err.message); });
+    }
+    if (act === 'msg-del') {
+      const id = a.dataset.id, gid = a.dataset.gid;
+      if (confirmId !== 'msg' + id) { confirmId = 'msg' + id; a.textContent = 'Tap again'; return; }
+      confirmId = ''; api('msg-delete', { groupId: gid, msgId: id }).then(() => openGroup(gid)).catch(err => alert(err.message));
+    }
     if (act === 'delete-test') {
       if (confirmId !== 'TEST') { confirmId = 'TEST'; renderList(); return; }
       confirmId = ''; api('delete-test').then(load).catch(err => alertBack(err.message));

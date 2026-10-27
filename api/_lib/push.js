@@ -33,6 +33,8 @@ export function reminderMessage(user, date) {
   if (appt && appt === tomorrow.toISOString().slice(0, 10)) {
     return { title: 'Your appointment is tomorrow', body: 'Want Cura to pull your notes into an agenda? Tap to open Visits.', url: '/#visit' };
   }
+  const todo = (user.plan || []).filter(p => p.status === 'active' && !(p.done || []).includes(date));
+  if (todo.length) return { title: `Hi${name} 👋`, body: `How are you feeling today? And on your plan: ${todo[0].title.replace(/\.$/, '')}${todo.length > 1 ? ` (+${todo.length - 1} more)` : ''} 🌿`, url: '/#today' };
   const lines = ['How are you feeling today? Tap to tell Cura.', 'A quick check-in takes 10 seconds 💚', 'Anything you noticed today? Cura will keep track.'];
   const pick = lines[new Date(date + 'T12:00:00Z').getUTCDate() % lines.length];
   return { title: `Hi${name} 👋`, body: pick, url: '/#chat' };

@@ -17,6 +17,9 @@ async function redis(command) {
   return data.result;
 }
 
+// Raw command, for the community's lists and locks.
+export const rcmd = command => redis(command);
+
 export async function getUser(phone) {
   const raw = await redis(['GET', `mira:user:${phone}`]);
   return raw ? JSON.parse(raw) : null;
@@ -26,12 +29,12 @@ export async function saveUser(phone, user) {
   await redis(['SET', `mira:user:${phone}`, JSON.stringify(user)]);
 }
 
-// True the first time a message id is seen; WhatsApp sometimes delivers the same webhook twice.
 export async function deleteUser(id) {
   await redis(['DEL', `mira:user:${id}`]);
   await redis(['SREM', 'mira:reminders', id]);
 }
 
+// True the first time a message id is seen; WhatsApp sometimes delivers the same webhook twice.
 export async function firstTimeSeen(messageId) {
   return (await redis(['SET', `mira:seen:${messageId}`, '1', 'NX', 'EX', 86400])) === 'OK';
 }

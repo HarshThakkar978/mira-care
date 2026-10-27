@@ -1,10 +1,16 @@
 // The Cura app's backend. One POST endpoint; `action` picks what to do.
 // Each device gets a random id (kept in the browser); data lives under "web-<id>" in Redis.
 import Anthropic from '@anthropic-ai/sdk';
+import { waitUntil } from '@vercel/functions';
 import { runTool, freshUser, normalizeUser } from './_lib/mira.js';
 import { miraReply, loadUser, storeUser, today, MODEL } from './_lib/respond.js';
-import { storeConfigured, addReminderUser, removeReminderUser, deleteUser } from './_lib/store.js';
+import { storeConfigured, addReminderUser, removeReminderUser } from './_lib/store.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
+import {
+  joinCommunity, updateCommunity, leaveCommunity, eraseUser, groupView, unreadCount, postMessage, extractTips,
+  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost
+} from './_lib/community.js';
+import { ideasFor, addToPlan, recordOutcome, HOW_WELL } from './_lib/community-logic.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Cura uses), so manual entries and chat entries stay in one place.
@@ -14,10 +20,12 @@ const json = (data, status = 200) => Response.json(data, { status, headers: { 'C
 // What the app gets back: everything except Cura's internal short-term memory.
 const PAGE = 80; // chat messages sent with each response; older ones load on request
 const view = user => {
-  const { history, actionLog, reminder, transcript = [], ...rest } = user;
+  const { history, actionLog, reminder, offers, transcript = [], ...rest } = user;
   const { subscriptions, ...r } = reminder || {};
   return { ...rest, transcript: transcript.slice(-PAGE), transcriptTotal: transcript.length, reminder: { ...r, devices: (subscriptions || []).length } };
 };
+const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
+const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
 export async function POST(request) {
@@ -29,13 +37,16 @@ export async function POST(request) {
   const key = `web-${id}`;
 
   try {
-    if (action === 'load') return json({ user: view(await loadUser(key)) });
+    if (action === 'load') {
+      const user = await loadUser(key);
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0) });
+    }
 
     if (action === 'chat') {
       const text = String(body.text || '').trim().slice(0, 2000);
       if (!text) return json({ error: 'Empty message' }, 400);
       if (body.stream) return streamChat(key, text);
-      const { reply, user } = await miraReply(key, text, 'app');
+      const { reply, user } = await miraReply(key, text, 'app', { context: (u, t) => chatContext(key, u, t) });
       return json({ reply, user: view(user) });
     }
 
@@ -107,9 +118,80 @@ export async function POST(request) {
 
     if (action === 'draft') return json({ user: view(await draft(key, user, body.mode === 'after' ? 'after' : 'prep')) });
 
+    // ---------- Community ----------
+    const since = typeof body.since === 'string' ? body.since : '';
+    if (action === 'community-join') {
+      const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
+      if (name && body.anonymous !== true) user.profile.name = name;
+      await joinCommunity(key, user, { focus: body.focus, anonymous: body.anonymous === true });
+      return json({ user: view(user), ...(await groupView(key, user)) });
+    }
+    if (action === 'community-settings') {
+      if (body.clearNotice) user.community.notice = null;
+      await updateCommunity(key, user, { anonymous: body.anonymous, focus: body.focus });
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
+    if (action === 'community-leave') {
+      await leaveCommunity(key, user);
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
+    if (action === 'group') {
+      if (!user.community.joined) return json({ error: 'Join the community first' }, 400);
+      return json({ ...((await groupView(key, user, since)) || { group: null, messages: [] }), notice: user.community.notice, reason: user.community.reason });
+    }
+    if (action === 'group-post') {
+      const text = String(body.text || '').trim().slice(0, 1000);
+      if (!text) return json({ error: 'Empty message' }, 400);
+      if (!user.community.joined || !user.community.groupId) return json({ error: 'Join the community first' }, 400);
+      if (!(await allowPost(key))) return json({ error: "That's a lot of messages for one hour. Take a breather and try again a bit later." }, 429);
+      const msg = await postMessage(user.community.groupId, key, text);
+      // Claude reads it for tips after the reply has gone out.
+      waitUntil(extractTips(user.community.groupId, msg, key, displayName(user)).catch(e => console.error('tip extraction failed', e)));
+      return json((await groupView(key, user, since)) || { group: null, messages: [] });
+    }
+    if (action === 'ideas') return json({ ideas: ideasFor(user, await loadTips(), today()) });
+    if (action === 'tip-hide') {
+      user.community.hidden = [...new Set([...user.community.hidden, String(body.tipId || '')])].filter(Boolean).slice(-100);
+      await storeUser(key, user);
+      return json({ user: view(user), ideas: ideasFor(user, await loadTips(), today()) });
+    }
+    if (action === 'plan-add') {
+      const tip = (await loadTips()).find(t => t.id === body.tipId && t.status === 'approved');
+      if (!tip) return json({ error: 'That idea is no longer available' }, 404);
+      const item = addToPlan(user, tip, today(), newId());
+      await storeUser(key, user);
+      if (item) await noteTipUse(tip.id, key, { added: true });
+      return json({ user: view(user) });
+    }
+    const item = user.plan.find(p => p.id === body.item); // "id" is the device id
+    if (action === 'plan-done' || action === 'plan-outcome') {
+      if (!item) return json({ error: 'That plan item is gone' }, 404);
+      if (action === 'plan-done') {
+        const d = isDate(body.date) ? body.date : today();
+        item.done = item.done.includes(d) ? item.done.filter(x => x !== d) : [...item.done, d].slice(-60);
+      } else {
+        if (!HOW_WELL.includes(body.how) || body.how === 'unclear') return json({ error: 'Pick how it went' }, 400);
+        recordOutcome(item, body.how);
+        await noteTipUse(item.tipId, key, { outcome: body.how });
+      }
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
+    if (action === 'plan-remove') {
+      user.plan = user.plan.filter(p => p.id !== body.item);
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
+    if (action === 'calendar-link') {
+      const token = await calendarToken(key, user);
+      return json({ url: `https://${new URL(request.url).host}/cal/${token}.ics`, user: view(user) });
+    }
+
     if (action === 'reset') {
-      // Remove the record entirely, so an erased person doesn't linger as an empty user.
-      await deleteUser(key);
+      // Remove the record entirely (and their community messages), so an erased person doesn't linger.
+      await eraseUser(key);
       return json({ user: view(freshUser()) });
     }
 
@@ -127,7 +209,7 @@ function streamChat(key, text) {
     async start(controller) {
       const send = obj => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'));
       try {
-        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }) });
+        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }), context: (u, t) => chatContext(key, u, t) });
         send({ t: 'done', reply, user: view(user) });
       } catch (e) {
         console.error('chat stream error', e);
