@@ -1,7 +1,7 @@
 {
-  "name": "Mira Care",
-  "short_name": "Mira",
-  "description": "Text Mira how you feel. She keeps track of your cycle and symptoms and helps you prepare for appointments.",
+  "name": "Cura",
+  "short_name": "Cura",
+  "description": "Text Cura how you feel. She keeps track of your cycle and symptoms and helps you prepare for appointments.",
   "id": "/",
   "start_url": "/?source=homescreen#chat",
   "scope": "/",

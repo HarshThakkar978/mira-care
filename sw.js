@@ -1,6 +1,6 @@
 // Keeps the app shell available offline. Pages load fresh from the network when possible;
 // the cached copy is only a fallback. API calls are never cached.
-const CACHE = 'mira-shell-v5';
+const CACHE = 'mira-shell-v6';
 const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
@@ -25,7 +25,7 @@ self.addEventListener('fetch', e => {
 self.addEventListener('push', e => {
   let msg = {};
   try { msg = e.data ? e.data.json() : {}; } catch { msg = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(msg.title || 'Mira', {
+  e.waitUntil(self.registration.showNotification(msg.title || 'Cura', {
     body: msg.body || 'How are you feeling today?',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',

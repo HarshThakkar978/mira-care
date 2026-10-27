@@ -1,6 +1,6 @@
-// WhatsApp Cloud API webhook for Mira.
+// WhatsApp Cloud API webhook for Cura.
 // GET  /api/whatsapp  → Meta's one-time webhook check (and a status page for us)
-// POST /api/whatsapp  → incoming messages; Mira replies through the Graph API
+// POST /api/whatsapp  → incoming messages; Cura replies through the Graph API
 import crypto from 'node:crypto';
 import { waitUntil } from '@vercel/functions';
 import { miraReply, MODEL } from './_lib/respond.js';

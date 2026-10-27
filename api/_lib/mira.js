@@ -1,10 +1,10 @@
-// Mira's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
-// Channel-agnostic: the Mira app, WhatsApp, and later iMessage all call handleIncoming.
+// Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
+// Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
 
-export const SYSTEM_PROMPT = `You are Mira, a companion people text to keep track of their perimenopause: how they feel, their periods and their symptoms, so they have clear notes for their clinician.
+export const SYSTEM_PROMPT = `You are Cura, a companion people text to keep track of their perimenopause: how they feel, their periods and their symptoms, so they have clear notes for their clinician.
 
 ## How you talk
 - Text like a caring friend who listens well: short, natural and plain. Usually two or three short sentences, under about 50 words. Go longer only when they ask for a summary or explanation.
@@ -26,7 +26,7 @@ Make answering easy: when the show_quick_replies tool is available and your ques
 Don't interrogate:
 - At most one question per reply.
 - Ask about any detail once, ever. If they don't answer it or move on, let it go.
-- Their name is nice to know but it isn't a form. Never ask for it in your first reply, and never right after they share something worrying or painful. If it comes up naturally later in a light moment, ask casually; it's fine never to ask. If they tell you their name, save it.
+- Their name comes from the app's welcome tour and appears in the context. Use it now and then where it feels warm and natural, not in every message. If it isn't known, don't ask for it; just carry on. If they tell you their name, save it.
 
 ## Keeping their notes
 - Save things as soon as they're mentioned, using your tools: symptoms, period starts, how they feel today, appointments, things to raise at a visit, and what happened at a visit.
@@ -44,7 +44,7 @@ Don't interrogate:
 - If something is new, severe or getting worse, you can say once, in a short phrase, that it's worth mentioning to their clinician. Don't repeat it in later messages.
 - Only give urgent-care guidance when they describe a red flag: bleeding that soaks a pad every hour, fainting, chest pain, sudden severe pain, or thoughts of harming themselves. Then say clearly and kindly to contact a doctor or emergency services now (911 in the US, or 988 for a mental health crisis). Don't list red flags otherwise.
 
-They can text "DELETE ALL" to erase everything Mira saved about them.`;
+They can text "DELETE ALL" to erase everything Cura saved about them.`;
 
 export const TOOLS = [
   {
@@ -162,7 +162,7 @@ export const TOOLS = [
   }
 ];
 
-// App only: tap-to-answer buttons shown under Mira's message. Not offered on WhatsApp.
+// App only: tap-to-answer buttons shown under Cura's message. Not offered on WhatsApp.
 export const QUICK_REPLY_TOOL = {
   name: 'show_quick_replies',
   description: 'Show tap-to-answer buttons under the question you are asking in this message, so they can answer with one tap. kind "scale": a 1-10 intensity scale (optionally label the ends). kind "options": 2-5 short answers, one tap each. kind "multi": 2-8 options they can pick several of. Call it at most once per reply, and still ask the question in your text.',
@@ -178,7 +178,7 @@ export const QUICK_REPLY_TOOL = {
   }
 };
 
-// Checks and trims what Mira asked to show; returns null if it isn't usable.
+// Checks and trims what Cura asked to show; returns null if it isn't usable.
 export function cleanQuickReplies(input) {
   const kind = input && input.kind;
   const short = (v, n) => String(v || '').trim().slice(0, n);
@@ -310,7 +310,7 @@ export function runTool(user, name, input, today) {
 
 const sevText = s => (s.severity ? `${s.severity}/10` : 'no intensity yet');
 
-// Facts Mira needs each turn: date, profile, and what's actually saved recently (with ids),
+// Facts Cura needs each turn: date, profile, and what's actually saved recently (with ids),
 // so she updates entries instead of duplicating them and never has to guess what she did.
 function contextNote(user, today, channel) {
   const lastPeriod = [...user.cycleStarts].sort((a, b) => b.date.localeCompare(a.date))[0];
@@ -333,7 +333,7 @@ function contextNote(user, today, channel) {
   return `<context>${facts}</context>\n<patterns>\n${patterns(user, today)}\n</patterns>\n<recent_entries>\n${entries}\n</recent_entries>\n<your_recent_actions>\n${actions}\n</your_recent_actions>`;
 }
 
-// A compact two-week summary so Mira can connect today's message to what's been happening.
+// A compact two-week summary so Cura can connect today's message to what's been happening.
 function patterns(user, today) {
   const since = new Date(new Date(today + 'T12:00:00Z').getTime() - 13 * 86400000).toISOString().slice(0, 10);
   const byName = new Map();

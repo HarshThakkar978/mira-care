@@ -31,9 +31,9 @@ export function reminderMessage(user, date) {
   const appt = user.profile.appointmentDate;
   const tomorrow = new Date(date + 'T12:00:00Z'); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   if (appt && appt === tomorrow.toISOString().slice(0, 10)) {
-    return { title: 'Your appointment is tomorrow', body: 'Want Mira to pull your notes into an agenda? Tap to open Visits.', url: '/#visit' };
+    return { title: 'Your appointment is tomorrow', body: 'Want Cura to pull your notes into an agenda? Tap to open Visits.', url: '/#visit' };
   }
-  const lines = ['How are you feeling today? Tap to tell Mira.', 'A quick check-in takes 10 seconds 💚', 'Anything you noticed today? Mira will keep track.'];
+  const lines = ['How are you feeling today? Tap to tell Cura.', 'A quick check-in takes 10 seconds 💚', 'Anything you noticed today? Cura will keep track.'];
   const pick = lines[new Date(date + 'T12:00:00Z').getUTCDate() % lines.length];
   return { title: `Hi${name} 👋`, body: pick, url: '/#chat' };
 }

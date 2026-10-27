@@ -1,6 +1,6 @@
 // WhatsApp through Twilio (works with Twilio's free WhatsApp Sandbox, no Meta business verification).
 // GET  /api/twilio → status page
-// POST /api/twilio → Twilio's "When a message comes in" webhook; Mira replies via Twilio's REST API
+// POST /api/twilio → Twilio's "When a message comes in" webhook; Cura replies via Twilio's REST API
 import { waitUntil } from '@vercel/functions';
 import { miraReply, MODEL } from './_lib/respond.js';
 import { firstTimeSeen, storeConfigured } from './_lib/store.js';

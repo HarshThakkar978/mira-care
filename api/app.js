@@ -1,4 +1,4 @@
-// The Mira app's backend. One POST endpoint; `action` picks what to do.
+// The Cura app's backend. One POST endpoint; `action` picks what to do.
 // Each device gets a random id (kept in the browser); data lives under "web-<id>" in Redis.
 import Anthropic from '@anthropic-ai/sdk';
 import { runTool, freshUser, normalizeUser } from './_lib/mira.js';
@@ -7,11 +7,11 @@ import { storeConfigured, addReminderUser, removeReminderUser, deleteUser } from
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
-// Tools the app may run directly (same ones Mira uses), so manual entries and chat entries stay in one place.
+// Tools the app may run directly (same ones Cura uses), so manual entries and chat entries stay in one place.
 const APP_TOOLS = new Set(['log_symptoms', 'log_period_start', 'log_feeling', 'save_profile', 'add_visit_note', 'add_after_visit_note', 'update_entry', 'delete_entry']);
 
 const json = (data, status = 200) => Response.json(data, { status, headers: { 'Cache-Control': 'no-store' } });
-// What the app gets back: everything except Mira's internal short-term memory.
+// What the app gets back: everything except Cura's internal short-term memory.
 const PAGE = 80; // chat messages sent with each response; older ones load on request
 const view = user => {
   const { history, actionLog, reminder, transcript = [], ...rest } = user;
@@ -100,7 +100,7 @@ export async function POST(request) {
     }
 
     if (action === 'test-push') {
-      const sent = await sendToUser(user, { title: 'Mira test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' });
+      const sent = await sendToUser(user, { title: 'Cura test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' });
       await storeUser(key, user);
       return json({ sent, user: view(user) });
     }
@@ -120,7 +120,7 @@ export async function POST(request) {
   }
 }
 
-// Streams Mira's reply as newline-separated JSON: {t:'delta',text} … then {t:'done',reply,user} (or {t:'error'}).
+// Streams Cura's reply as newline-separated JSON: {t:'delta',text} … then {t:'done',reply,user} (or {t:'error'}).
 function streamChat(key, text) {
   const enc = new TextEncoder();
   const body = new ReadableStream({
@@ -131,7 +131,7 @@ function streamChat(key, text) {
         send({ t: 'done', reply, user: view(user) });
       } catch (e) {
         console.error('chat stream error', e);
-        send({ t: 'error', error: 'Mira could not reply just now. Please try again.' });
+        send({ t: 'error', error: 'Cura could not reply just now. Please try again.' });
       }
       controller.close();
     }

@@ -1,4 +1,4 @@
-# Replays test conversations against the LIVE Mira (uses real Claude credits, a fraction of a cent each),
+# Replays test conversations against the LIVE Cura (uses real Claude credits, a fraction of a cent each),
 # prints the replies and what got saved, then erases the test data.
 # Test users get ids starting with "claude-" so the admin page can clean up any leftovers.
 # Run: python3 dev/replay.py            (or: python3 dev/replay.py elsie)
@@ -18,7 +18,7 @@ SCENARIOS = {
     "toughday": ["Hey! Tough day today at work. Very exhausted.",
                  "yeah I haven't been sleeping well, keep waking up hot",
                  "ok thanks, that's all for now"],
-    # Two earlier tired days are saved first, so Mira should connect today's message to them.
+    # Two earlier tired days are saved first, so Cura should connect today's message to them.
     "tiredagain": [("setup", "log_symptoms", {"days_ago": 2, "symptoms": [{"name": "fatigue", "severity": 6}]}),
                     ("setup", "log_symptoms", {"days_ago": 1, "symptoms": [{"name": "fatigue", "severity": 7}, {"name": "night sweats", "severity": 6}]}),
                     "so tired again today ugh"],

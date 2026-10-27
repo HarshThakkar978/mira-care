@@ -9,7 +9,7 @@
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
   const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 
-  // "?device=<id>" opens the same Mira on another phone or computer.
+  // "?device=<id>" opens the same Cura on another phone or computer.
   const linked = new URLSearchParams(location.search).get('device');
   if (linked && ID_RE.test(linked)) { store.set(ID_KEY, linked); store.del(CACHE_KEY); history.replaceState(null, '', location.pathname + location.hash); }
   let deviceId = store.get(ID_KEY);
@@ -58,7 +58,7 @@
   async function api(action, payload = {}, { keepUser = false } = {}) {
     const res = await fetch('/api/app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, action, ...payload }) });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Could not reach Mira. Check your connection.');
+    if (!res.ok) throw new Error(data.error || 'Could not reach Cura. Check your connection.');
     if (data.user && !keepUser) setUser(data.user);
     return data;
   }
@@ -97,7 +97,7 @@
     const day = sameDay ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     return `<b>${day}</b> ${time}`;
   };
-  const WELCOME = "Hi, I'm Mira 💚 Text me whenever you like: how you're feeling, a symptom, or when your period starts. I'll keep track of it all and help you get ready for appointments.";
+  const WELCOME = "Hi, I'm Cura 💚 Text me whenever you like: how you're feeling, a symptom, or when your period starts. I'll keep track of it all and help you get ready for appointments.";
 
   function threadHtml() {
     const msgs = allMsgs();
@@ -105,7 +105,7 @@
     // Only messages that arrived since the last render get the entrance animation.
     const fresh = ui.seen === null ? msgs.length : ui.seen;
     let html = total > msgs.length ? `<button class="load-older no-print" data-action="older" ${ui.loadingOlder ? 'disabled' : ''}>${ui.loadingOlder ? 'Loading…' : 'Load earlier messages'}</button>` : '';
-    if (!msgs.length) html += `<div class="stamp"><b>Mira</b></div><div class="msg them tail">${fmtMsg(WELCOME)}</div>`;
+    if (!msgs.length) html += `<div class="stamp"><b>Cura</b></div><div class="msg them tail">${fmtMsg(WELCOME)}</div>`;
     msgs.forEach((m, i) => {
       const prev = msgs[i - 1], next = msgs[i + 1];
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
@@ -115,12 +115,12 @@
     ui.seen = msgs.length;
     if (ui.pending) html += `<div class="msg me tail pop">${fmtMsg(ui.pending)}</div>` + (ui.live
       ? `<div class="msg them tail live" id="live">${fmtMsg(ui.live)}</div>`
-      : `<div class="typing" aria-label="Mira is typing"><i></i><i></i><i></i></div>`);
+      : `<div class="typing" aria-label="Cura is typing"><i></i><i></i><i></i></div>`);
     else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
     else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || `<div class="msg-status">Delivered</div>`;
     return html;
   }
-  // Tap-to-answer buttons Mira attached to her latest question (scale, options or pick-several).
+  // Tap-to-answer buttons Cura attached to her latest question (scale, options or pick-several).
   function quickRepliesHtml(m) {
     const q = m.ui;
     if (!q) return '';
@@ -137,7 +137,7 @@
   }
   function chipsHtml() {
     const last = allMsgs().slice(-1)[0];
-    if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Mira's own answer buttons take over
+    if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Cura's own answer buttons take over
     const first = !(user.transcript || []).length;
     const list = first
       ? ['Feeling okay today', 'Rough day today', 'My period started today', 'I had hot flashes last night']
@@ -146,16 +146,16 @@
   }
   function renderChat() {
     const tip = isIOS() && !isStandalone() && !store.get(TIP_KEY)
-      ? `<div class="install no-print"><span>📲</span><span><b>Keep Mira on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
+      ? `<div class="install no-print"><span>📲</span><span><b>Keep Cura on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
     return `<section class="chat">
-      <header class="chat-head"><div class="avatar">m</div><div class="chat-name">Mira</div><div class="chat-status">Your perimenopause companion</div></header>
+      <header class="chat-head"><div class="avatar">c</div><div class="chat-name">Cura</div><div class="chat-status">Your perimenopause companion</div></header>
       ${tip}
       <div class="thread" id="thread" aria-live="polite">${threadHtml()}</div>
       <div class="chips no-print" id="chips">${chipsHtml()}</div>
       <form class="composer no-print" id="composer">
         <button class="plus" type="button" data-action="quick-log" aria-label="Quick log a symptom or period"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
-        <label class="sr-only" for="msgInput">Message Mira</label>
-        <textarea id="msgInput" rows="1" placeholder="Message Mira" enterkeyhint="send" autocomplete="off"></textarea>
+        <label class="sr-only" for="msgInput">Message Cura</label>
+        <textarea id="msgInput" rows="1" placeholder="Message Cura" enterkeyhint="send" autocomplete="off"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
       </form>
     </section>`;
@@ -180,7 +180,7 @@
   }
   function autoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, el.classList.contains('ag-text') ? 400 : 140) + 'px'; }
 
-  // Sends a message and shows Mira's reply word by word as it streams in.
+  // Sends a message and shows Cura's reply word by word as it streams in.
   async function sendMessage(text) {
     text = text.trim();
     if (!text || ui.sending) return;
@@ -188,7 +188,7 @@
     refreshThread();
     try {
       const res = await fetch('/api/app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, action: 'chat', text, stream: true }) });
-      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not reach Mira. Check your connection.'); }
+      if (!res.ok || !res.body) { const d = await res.json().catch(() => ({})); throw new Error(d.error || 'Could not reach Cura. Check your connection.'); }
       const reader = res.body.getReader(), dec = new TextDecoder();
       let buf = '', finished = false;
       for (;;) {
@@ -249,14 +249,14 @@
     const checkedToday = user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'long', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
-      <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Mira if anything changes.' : 'Text Mira, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
+      <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Cura if anything changes.' : 'Text Cura, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
       <div class="quick-row no-print">
         <button class="btn ghost" data-action="quick-log">➕ Quick log</button>
         ${user.reminder && user.reminder.enabled ? `<button class="btn ghost" data-route="report">📄 Doctor summary</button>` : `<button class="btn ghost" data-route="me">🔔 Daily reminder</button>`}
       </div>
       ${insightCard()}
       <div class="grid three">
-        <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Mira when it starts'}</div></div>
+        <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Cura when it starts'}</div></div>
         <div class="card stat"><div class="stat-label">Average gap</div><div class="stat-value">${avg ? avg + ' days' : '—'}</div><div class="stat-note">${gaps.length ? `Across ${plural(gaps.length + 1, 'period')} · last ${gaps[gaps.length - 1]} days` : 'Needs two period starts'}</div></div>
         <div class="card stat"><div class="stat-label">Next appointment</div><div class="stat-value">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : '—'}</div><div class="stat-note">${appt ? fmtLong(appt) + (user.profile.clinician ? ' · ' + esc(user.profile.clinician) : '') : '<a href="#visit" data-route="visit">Add a date</a>'}</div></div>
       </div>
@@ -268,21 +268,21 @@
       </div>
       <div class="grid two" style="margin-top:14px">
         <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
-          ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Mira things like “hot flashes last night, a 6”.</div>`}
+          ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
         </div>
-        <div class="card"><h2 class="card-title">Recent</h2><p class="card-sub">The latest things you told Mira</p>${recentList()}</div>
+        <div class="card"><h2 class="card-title">Recent</h2><p class="card-sub">The latest things you told Cura</p>${recentList()}</div>
       </div>
       ${lastCheck ? `<p class="note">Last check-in: “${esc(lastCheck.feeling)}” · ${fmtLong(lastCheck.date)}</p>` : ''}
-      <p class="note">Mira organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
+      <p class="note">Cura organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
     </div>`;
   }
   function insightCard() {
     const text = ui.insight || (user.insight && user.insight.text);
     if (!text && !ui.insightLoading) return '';
-    return `<div class="card insight"><div class="row"><h2 class="card-title">✨ Your week</h2><span class="small muted">From Mira</span></div>
+    return `<div class="card insight"><div class="row"><h2 class="card-title">✨ Your week</h2><span class="small muted">From Cura</span></div>
       ${text ? `<p class="insight-text">${esc(text)}</p>` : '<div class="skel" style="width:92%"></div><div class="skel" style="width:70%"></div>'}</div>`;
   }
-  // Asks Mira for a short read of the last 7 days once per visit to Today (the server caches it).
+  // Asks Cura for a short read of the last 7 days once per visit to Today (the server caches it).
   function maybeLoadInsight() {
     if (ui.insightTried) return;
     const since = addDays(today(), -6);
@@ -323,7 +323,7 @@
     const selCheck = user.checkins.filter(c => c.date === sel);
     const gaps = sortedStarts();
     return `<div class="page">
-      <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add what happened. Anything you tell Mira in chat shows up here too.</p></div>
+      <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add what happened. Anything you tell Cura in chat shows up here too.</p></div>
       <div class="card">
         <div class="cal-head"><button class="icon-btn" data-action="month" data-dir="-1" aria-label="Previous month">‹</button><div class="cal-title">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div><button class="icon-btn" data-action="month" data-dir="1" aria-label="Next month">›</button></div>
         <div class="cal">${dows}${days}</div>
@@ -337,7 +337,7 @@
       </div>
       <div class="card">
         <h2 class="card-title">Period history</h2><p class="card-sub">Days between period starts are counted for you.</p>
-        ${gaps.length ? [...gaps].reverse().map((c, i, arr) => { const prev = arr[i + 1]; return `<div class="list-item"><span aria-hidden="true">🩸</span><div class="li-main"><div class="li-title">${esc(fmtLong(c.date))}</div><div class="li-meta">${prev ? diffDays(prev.date, c.date) + ' days after the previous start' : 'First one logged'}</div></div><button class="icon-btn" data-action="del" data-kind="period_start" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`; }).join('') : `<div class="empty"><strong>No period dates yet</strong>Tap a day above, or tell Mira “my period started today”.</div>`}
+        ${gaps.length ? [...gaps].reverse().map((c, i, arr) => { const prev = arr[i + 1]; return `<div class="list-item"><span aria-hidden="true">🩸</span><div class="li-main"><div class="li-title">${esc(fmtLong(c.date))}</div><div class="li-meta">${prev ? diffDays(prev.date, c.date) + ' days after the previous start' : 'First one logged'}</div></div><button class="icon-btn" data-action="del" data-kind="period_start" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`; }).join('') : `<div class="empty"><strong>No period dates yet</strong>Tap a day above, or tell Cura “my period started today”.</div>`}
       </div>
     </div>`;
   }
@@ -358,7 +358,7 @@
     const tabs = [['before', 'Before'], ['agenda', 'Agenda'], ['after', 'After']];
     const body = ui.visitTab === 'before' ? visitBefore() : ui.visitTab === 'agenda' ? visitAgenda() : visitAfter();
     return `<div class="page">
-      <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Collect what you want to raise, let Mira turn it into an agenda, and keep track of next steps.</p>
+      <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Collect what you want to raise, let Cura turn it into an agenda, and keep track of next steps.</p>
         <button class="btn ghost no-print" data-route="report" style="margin-top:12px">📄 Summary for my doctor</button></div>
       <div class="seg no-print" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${ui.visitTab === k}" class="${ui.visitTab === k ? 'on' : ''}" data-visit="${k}">${l}</button>`).join('')}</div>
       ${body}
@@ -368,16 +368,16 @@
     const p = user.profile;
     const notes = [...user.preNotes].sort((a, b) => b.date.localeCompare(a.date));
     return `<div class="card">
-        <h2 class="card-title">Next appointment</h2><p class="card-sub">Optional. Mira uses this to remind you what to bring up.</p>
+        <h2 class="card-title">Next appointment</h2><p class="card-sub">Optional. Cura uses this to remind you what to bring up.</p>
         <div class="form-grid"><div class="field"><label for="apptDate">Date</label><input class="input" id="apptDate" type="date" data-profile="appointment_date" value="${esc(p.appointmentDate)}"></div>
         <div class="field"><label for="clinician">Clinician or clinic</label><input class="input" id="clinician" data-profile="clinician" value="${esc(p.clinician)}" placeholder="e.g. Dr. Patel"></div></div>
       </div>
       <div class="card">
-        <h2 class="card-title">Things to bring up</h2><p class="card-sub">Questions, worries, or changes you've noticed. You can also just tell Mira in chat.</p>
+        <h2 class="card-title">Things to bring up</h2><p class="card-sub">Questions, worries, or changes you've noticed. You can also just tell Cura in chat.</p>
         <form data-form="pre-note" class="stack"><textarea class="textarea" name="text" required placeholder="e.g. My sleep has been much worse since August"></textarea><div class="row"><span class="small muted">${plural(notes.length, 'note')}</span><button class="btn primary" type="submit">Add note</button></div></form>
         <div style="margin-top:8px">${notes.map(n => `<div class="list-item"><span aria-hidden="true">📝</span><div class="li-main"><div class="li-note" style="margin-top:0">${esc(n.text)}</div><div class="li-meta">${fmtLong(n.date)}</div></div><button class="icon-btn" data-action="del" data-kind="visit_note" data-id="${esc(n.id)}" aria-label="Delete note">×</button></div>`).join('')}</div>
       </div>
-      <button class="btn primary sparkle" style="width:100%;margin-top:14px" data-action="draft" data-mode="prep" ${ui.drafting ? 'disabled' : ''}>${ui.drafting ? 'Mira is writing…' : '✨ Turn my notes into an agenda'}</button>`;
+      <button class="btn primary sparkle" style="width:100%;margin-top:14px" data-action="draft" data-mode="prep" ${ui.drafting ? 'disabled' : ''}>${ui.drafting ? 'Cura is writing…' : '✨ Turn my notes into an agenda'}</button>`;
   }
   function listEditor(field, key, items, placeholder) {
     return `<div>${items.map((t, i) => `<div class="ag-item"><span class="ag-num">${i + 1}</span><textarea class="ag-text" rows="1" data-edit="${field}.${key}" data-index="${i}" aria-label="${esc(placeholder)} ${i + 1}">${esc(t)}</textarea><span class="ag-tools no-print"><button class="icon-btn" data-action="move" data-field="${field}" data-key="${key}" data-index="${i}" data-dir="-1" aria-label="Move up" ${i === 0 ? 'disabled' : ''}>↑</button><button class="icon-btn" data-action="remove" data-field="${field}" data-key="${key}" data-index="${i}" aria-label="Remove">×</button></span></div>`).join('')}
@@ -389,7 +389,7 @@
     return `<div class="card">
       <div class="row"><div><h2 class="card-title">Visit agenda</h2><p class="card-sub" style="margin:0">${when}</p></div>
       <button class="btn small sparkle no-print" data-action="draft" data-mode="prep" ${ui.drafting ? 'disabled' : ''}>${ui.drafting ? 'Writing…' : empty ? '✨ Draft' : '✨ Redraft'}</button></div>
-      ${empty ? `<div class="empty" style="margin-top:14px"><strong>No agenda yet</strong>Mira can draft one from your symptoms, cycle and notes. You can edit every line.</div>` : `
+      ${empty ? `<div class="empty" style="margin-top:14px"><strong>No agenda yet</strong>Cura can draft one from your symptoms, cycle and notes. You can edit every line.</div>` : `
       <div class="section-kicker">Opening summary</div><textarea class="textarea" data-edit="agenda.summary" aria-label="Opening summary">${esc(a.summary)}</textarea>
       <div class="section-kicker">Topics</div>${listEditor('agenda', 'topics', a.topics, 'Topic')}
       <div class="section-kicker">Questions to ask</div>${listEditor('agenda', 'questions', a.questions, 'Question')}
@@ -418,31 +418,31 @@
     const counts = [[user.symptoms.length, 'symptom'], [user.cycleStarts.length, 'period start'], [user.checkins.length, 'check-in'], [user.preNotes.length + user.postNotes.length, 'visit note']];
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">Settings</div><h1 class="title">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${counts.map(([n, w]) => plural(n, w)).join(' · ')}</p></div>
-      <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Mira calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
-      ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Mira to your Home Screen</h2>${installHelp()}</div>`}
+      <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Cura calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
+      ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Cura to your Home Screen</h2>${installHelp()}</div>`}
       <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
       <div class="card"><h2 class="card-title">🎨 Appearance</h2><p class="card-sub">Light, dark, or follow your phone's setting.</p>${themeSeg()}</div>
-      <div class="card"><h2 class="card-title">Use Mira on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
+      <div class="card"><h2 class="card-title">Use Cura on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
       <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="export">Download my data</button>
         <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
       <div class="card"><h2 class="card-title">📄 Summary for your doctor</h2><p class="card-sub">A one-page overview of your last 90 days to print or save as a PDF.</p><button class="btn ghost" data-route="report">Open summary</button></div>
       <button class="btn ghost" data-action="show-welcome" style="width:100%;margin-top:14px">Show the welcome tour again</button>
-      <p class="note">Mira Care is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
+      <p class="note">Cura is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
     </div>`;
   }
 
   function reminderCard() {
     const r = user.reminder || { enabled: false, hour: 20 };
     if (!pushSupported() || (isIOS() && !isStandalone())) {
-      return `<p class="card-sub" style="margin:0">${isIOS() ? 'iPhone only allows reminders for apps on your Home Screen. Add Mira to your Home Screen (above), open it from there, and turn this on.' : "This browser can't show notifications. Try Chrome, Edge or Safari, or add Mira to your Home Screen."}</p>`;
+      return `<p class="card-sub" style="margin:0">${isIOS() ? 'iPhone only allows reminders for apps on your Home Screen. Add Cura to your Home Screen (above), open it from there, and turn this on.' : "This browser can't show notifications. Try Chrome, Edge or Safari, or add Cura to your Home Screen."}</p>`;
     }
     if (Notification.permission === 'denied') {
-      return `<p class="card-sub" style="margin:0">Notifications are blocked for Mira. Turn them on in your phone's Settings → Notifications → Mira (or in your browser's site settings), then come back here.</p>`;
+      return `<p class="card-sub" style="margin:0">Notifications are blocked for Cura. Turn them on in your phone's Settings → Notifications → Cura (or in your browser's site settings), then come back here.</p>`;
     }
     const hours = Array.from({ length: 18 }, (_, i) => i + 6).map(h => `<option value="${h}" ${h === r.hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('');
-    return `<p class="card-sub">A gentle nudge once a day to check in with Mira. It's skipped on days you've already logged something.</p>
+    return `<p class="card-sub">A gentle nudge once a day to check in with Cura. It's skipped on days you've already logged something.</p>
       <div class="form-grid"><div class="field"><label for="remHour">Remind me around</label><select class="select" id="remHour" data-reminder-hour>${hours}</select></div></div>
       <div class="row-wrap" style="margin-top:12px">${r.enabled
         ? `<span class="pill">On · around ${hourLabel(r.hour)}</span><button class="btn small ghost" data-action="test-push">Send a test</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
@@ -451,7 +451,7 @@
   async function enableReminders() {
     // Ask for permission first, straight from the tap (iPhone requires that).
     const perm = await Notification.requestPermission();
-    if (perm !== 'granted') throw new Error('Notifications were not allowed. You can allow them in Settings → Notifications → Mira.');
+    if (perm !== 'granted') throw new Error('Notifications were not allowed. You can allow them in Settings → Notifications → Cura.');
     const reg = await navigator.serviceWorker.ready;
     const { publicKey } = await api('push-key', {}, { keepUser: true });
     let sub = await reg.pushManager.getSubscription();
@@ -477,8 +477,8 @@
   let installPrompt = null; // Chrome/Android offer their own install dialog; we keep it for an "Install" button
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (route === 'me') render(); });
   function installHelp() {
-    if (installPrompt) return `<p class="card-sub">Install Mira so it opens straight into the chat, like an app.</p><button class="btn primary" data-action="install">Install Mira</button>`;
-    if (isIOS()) return `<p class="card-sub" style="margin:0">Open this site in <b>Safari</b>, tap <b>Share</b> <span aria-hidden="true">(□↑)</span>, scroll down and tap <b>Add to Home Screen</b>. Mira then opens straight into the chat, like an app.</p>`;
+    if (installPrompt) return `<p class="card-sub">Install Cura so it opens straight into the chat, like an app.</p><button class="btn primary" data-action="install">Install Cura</button>`;
+    if (isIOS()) return `<p class="card-sub" style="margin:0">Open this site in <b>Safari</b>, tap <b>Share</b> <span aria-hidden="true">(□↑)</span>, scroll down and tap <b>Add to Home Screen</b>. Cura then opens straight into the chat, like an app.</p>`;
     return `<p class="card-sub" style="margin:0">On Android, open the browser menu <b>⋮</b> and tap <b>Install app</b> or <b>Add to Home screen</b>. On a computer, look for the install icon in the address bar.</p>`;
   }
 
@@ -495,7 +495,7 @@
     ui.sheet = 'log'; renderSheet();
   }
   function closeSheet() {
-    if (ui.sheet === 'welcome') store.set(OB_KEY, '1');
+    if (ui.sheet === 'welcome') { saveObName(); store.set(OB_KEY, '1'); }
     ui.sheet = null; renderSheet();
   }
   function quickLogHtml() {
@@ -528,23 +528,35 @@
       render();
     } catch (e) { L.saving = false; toast(e.message); renderSheet(); }
   }
+  const obSteps = () => ['meet', 'name', ...(isStandalone() ? [] : ['install']), 'remind'];
   function welcomeHtml() {
-    const steps = ['meet', ...(isStandalone() ? [] : ['install']), 'remind'];
+    const steps = obSteps();
     const step = steps[Math.min(ui.ob, steps.length - 1)], last = ui.ob >= steps.length - 1;
     const canRemind = pushSupported() && (!isIOS() || isStandalone()) && Notification.permission !== 'denied';
     const body = {
-      meet: `<div class="ob-art"><div class="avatar big">m</div></div><h2 id="sheetTitle" class="ob-title">Meet Mira</h2>
-        <p class="ob-text">Text Mira how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
+      meet: `<div class="ob-art"><div class="avatar big">c</div></div><h2 id="sheetTitle" class="ob-title">Meet Cura</h2>
+        <p class="ob-text">Text Cura how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
         <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
         <p class="ob-hint">Prefer dark mode? Pick it here, or anytime in <b>Me → Appearance</b>.</p>${themeSeg()}`,
-      install: `<div class="ob-art">📲</div><h2 id="sheetTitle" class="ob-title">Keep Mira one tap away</h2>${installHelp()}`,
+      name: `<div class="ob-art">👋</div><h2 id="sheetTitle" class="ob-title">What should we call you?</h2>
+        <p class="ob-text">Cura will use your first name now and then. You can skip this or change it anytime in <b>Me</b>.</p>
+        <label class="sr-only" for="obName">Your first name</label>
+        <input class="input" id="obName" data-ob-name maxlength="60" autocomplete="given-name" enterkeyhint="next" placeholder="Your first name" value="${esc(ui.obName ?? user.profile.name)}" style="max-width:320px;margin:0 auto;display:block;text-align:center">`,
+      install: `<div class="ob-art">📲</div><h2 id="sheetTitle" class="ob-title">Keep Cura one tap away</h2>${installHelp()}`,
       remind: `<div class="ob-art">🔔</div><h2 id="sheetTitle" class="ob-title">A gentle daily nudge</h2>
-        <p class="ob-text">Mira can remind you once a day to check in. It's skipped on days you've already logged something.</p>
-        ${canRemind ? (user.reminder && user.reminder.enabled ? '<p class="pill">Reminder is on ✓</p>' : `<button class="btn primary" data-action="ob-remind" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Remind me at 8 PM'}</button>`) : `<p class="card-sub">${isIOS() ? 'Once Mira is on your Home Screen, open it from there and turn this on in <b>Me</b>.' : 'You can turn this on later in <b>Me</b>.'}</p>`}`
+        <p class="ob-text">Cura can remind you once a day to check in. It's skipped on days you've already logged something.</p>
+        ${canRemind ? (user.reminder && user.reminder.enabled ? '<p class="pill">Reminder is on ✓</p>' : `<button class="btn primary" data-action="ob-remind" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Remind me at 8 PM'}</button>`) : `<p class="card-sub">${isIOS() ? 'Once Cura is on your Home Screen, open it from there and turn this on in <b>Me</b>.' : 'You can turn this on later in <b>Me</b>.'}</p>`}`
     }[step];
     return `<div class="ob">${body}</div>
       <div class="dots-row" aria-hidden="true">${steps.map((_, i) => `<i class="${i === ui.ob ? 'on' : ''}"></i>`).join('')}</div>
       <div class="row"><button class="btn ghost" data-action="${ui.ob ? 'ob-back' : 'sheet-close'}">${ui.ob ? 'Back' : 'Skip'}</button><button class="btn primary" data-action="${last ? 'sheet-close' : 'ob-next'}">${last ? 'Start chatting' : 'Next'}</button></div>`;
+  }
+  // Saves the name typed in the welcome tour (once, when they move on).
+  function saveObName() {
+    const name = (ui.obName || '').trim();
+    if (obSteps()[ui.ob] !== 'name' || !name || name === user.profile.name) return;
+    user.profile.name = name; saveCache();
+    tool('save_profile', { name }).catch(() => {});
   }
   function renderSheet() {
     const root = $('#sheet');
@@ -570,7 +582,7 @@
     const table = (head, rows, empty) => rows.length ? `<table class="rtable"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>` : `<p class="muted small">${empty}</p>`;
     return `<div class="page report">
       <div class="row no-print" style="margin-bottom:14px"><button class="btn ghost" data-route="visit">← Back</button><button class="btn primary" data-action="print">Print / Save as PDF</button></div>
-      <div class="report-head"><div class="brand"><span class="brand-mark">m</span><span class="brand-name">mira care</span></div>
+      <div class="report-head"><div class="brand"><span class="brand-mark">c</span><span class="brand-name">cura</span></div>
         <h1 class="title" style="font-size:26px">Symptom & cycle summary${p.name ? ' · ' + esc(p.name) : ''}</h1>
         <p class="sub">${fmt(from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })} · made ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })}${p.appointmentDate ? ` · for the appointment on ${fmtLong(p.appointmentDate)}${p.clinician ? ' with ' + esc(p.clinician) : ''}` : ''}</p></div>
       ${user.agenda.summary ? `<section class="rsec"><h2>In my words</h2><p>${esc(user.agenda.summary)}</p></section>` : ''}
@@ -579,7 +591,7 @@
       ${raise.length ? `<section class="rsec"><h2>What I want to discuss</h2><ul>${raise.slice(0, 12).map(r => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}
       <section class="rsec"><h2>Symptom log</h2>${table(['Date', 'Symptom', 'Intensity', 'Notes'], syms.slice(0, 60).map(s => [fmt(s.date), esc(s.name), s.severity ? s.severity + '/10' : '—', esc([s.impact, s.notes].filter(Boolean).join('; '))]), 'Nothing logged yet.')}</section>
       ${checks.length ? `<section class="rsec"><h2>How I've been feeling</h2>${table(['Date', 'Check-in'], checks.slice(0, 20).map(c => [fmt(c.date), esc(c.feeling)]), '')}</section>` : ''}
-      <p class="note">Recorded by the patient with Mira Care, a personal tracking app. Not a medical record or diagnosis.</p>
+      <p class="note">Recorded by the patient with Cura, a personal tracking app. Not a medical record or diagnosis.</p>
     </div>`;
   }
 
@@ -628,7 +640,7 @@
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
     else if (act === 'sheet-close') closeSheet();
     else if (act === 'log-save') saveQuickLog();
-    else if (act === 'ob-next') { ui.ob++; renderSheet(); }
+    else if (act === 'ob-next') { saveObName(); ui.ob++; renderSheet(); }
     else if (act === 'ob-back') { ui.ob = Math.max(0, ui.ob - 1); renderSheet(); }
     else if (act === 'show-welcome') { ui.ob = 0; ui.sheet = 'welcome'; renderSheet(); }
     else if (act === 'ob-remind') {
@@ -670,7 +682,7 @@
     else if (act === 'test-push') guarded(async () => { const d = await api('test-push'); if (!d.sent) throw new Error('No device to send to. Turn the reminder off and on again.'); }, 'Test sent. It should arrive in a few seconds.');
     else if (act === 'export') {
       const blob = new Blob([JSON.stringify(user, null, 2)], { type: 'application/json' });
-      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `mira-care-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
+      const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `cura-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
     }
     else if (act === 'reset') {
       if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
@@ -699,6 +711,7 @@
       // Show the intensity slider as soon as something is typed, without losing the cursor.
       if (had !== !!(ui.log.syms.length || el.value.trim())) { const pos = el.selectionStart; renderSheet(); const box = $('[data-log-other]'); box.focus(); box.setSelectionRange(pos, pos); }
     }
+    if (el.matches('[data-ob-name]')) ui.obName = el.value;
     if (el.matches('[data-log-sev]') && ui.log) { ui.log.sev = Number(el.value); $('#logSevOut').textContent = el.value; }
     if (el.dataset.edit) {
       const [field, key] = el.dataset.edit.split('.');
@@ -709,6 +722,7 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); saveObName(); ui.ob++; renderSheet(); return; }
     if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
   });
   document.addEventListener('change', e => {
@@ -740,7 +754,7 @@
       // Bring over entries saved by the old browser-only version of the site.
       const old = store.get(OLD_KEY);
       if (old && !hasData(user)) {
-        try { const data = await api('import', { state: JSON.parse(old) }); if (data.imported) { store.set(OLD_KEY + '-imported', old); store.del(OLD_KEY); toast('Your earlier notes were moved into Mira'); } } catch {}
+        try { const data = await api('import', { state: JSON.parse(old) }); if (data.imported) { store.set(OLD_KEY + '-imported', old); store.del(OLD_KEY); toast('Your earlier notes were moved into Cura'); } } catch {}
       }
       ui.loaded = true;
       ui.seen = null; // messages already on the server shouldn't animate in

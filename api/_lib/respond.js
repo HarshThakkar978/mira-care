@@ -1,4 +1,4 @@
-// Shared by every channel: load the person's data, let Mira answer, save, return the reply.
+// Shared by every channel: load the person's data, let Cura answer, save, return the reply.
 import Anthropic from '@anthropic-ai/sdk';
 import { handleIncoming, normalizeUser, localDate } from './mira.js';
 import { getUser, saveUser } from './store.js';
@@ -12,7 +12,7 @@ export const loadUser = async key => normalizeUser(await getUser(key));
 export const storeUser = (key, user) => saveUser(key, user);
 
 // key: the person's storage id — phone digits on WhatsApp, "web-<device id>" in the app.
-// hooks.onText(delta) streams Mira's words as they're written (the app); without it the reply arrives whole (WhatsApp).
+// hooks.onText(delta) streams Cura's words as they're written (the app); without it the reply arrives whole (WhatsApp).
 // Tool inputs here are tiny, so eager tool-input streaming isn't worth turning on.
 export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
   const user = await loadUser(key);
@@ -27,7 +27,7 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
         return stream.finalMessage();
       }
     : params => client.beta.messages.create(params);
-  let quick = null; // tap-to-answer buttons Mira attached to this reply (app only)
+  let quick = null; // tap-to-answer buttons Cura attached to this reply (app only)
   const reply = await handleIncoming(user, text, today(), {
     model,
     effort: env('MIRA_EFFORT') || 'low',

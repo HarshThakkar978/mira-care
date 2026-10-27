@@ -1,4 +1,4 @@
-// Tests Mira's conversation logic with a fake Claude (free, offline).
+// Tests Cura's conversation logic with a fake Claude (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/mira-logic.test.mjs
 //  or: node dev/mira-logic.test.mjs
 import { handleIncoming, freshUser, localDate, runTool, normalizeUser } from '../api/_lib/mira.js';
@@ -84,7 +84,7 @@ const today = '2026-10-23';
   log(fail ? `${fail} FAILED` : 'ALL PASSED');
 })().catch(e => log('CRASH', String(e), e.stack));
 
-// Patterns: Mira gets a two-week summary to connect today's message to recent days.
+// Patterns: Cura gets a two-week summary to connect today's message to recent days.
 (async () => {
   const u = freshUser();
   u.symptoms.push({ id: 'a', date: '2026-10-20', name: 'Fatigue', severity: 6 }, { id: 'b', date: '2026-10-22', name: 'fatigue', severity: 8 }, { id: 'c', date: '2026-09-01', name: 'old thing', severity: 3 });

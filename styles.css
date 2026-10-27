@@ -1,4 +1,4 @@
-/* Mira Care — app styles. Light by default; dark via <html data-theme="dark"> (or "system" to follow the phone). iMessage-style chat; tab bar on phones, side rail on desktop. */
+/* Cura — app styles. Light by default; dark via <html data-theme="dark"> (or "system" to follow the phone). iMessage-style chat; tab bar on phones, side rail on desktop. */
 :root{
   --bg:#f7f7f3;--surface:#fff;--surface-2:#f1f3ee;--ink:#1d2b28;--muted:#6f7c77;--faint:#9aa59f;--line:#e4e8e2;
   --brand:#23665a;--brand-deep:#174b42;--brand-soft:#e5f0ea;
