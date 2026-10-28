@@ -35,6 +35,12 @@ export async function deleteUser(id) {
 }
 
 // True the first time a message id is seen; WhatsApp sometimes delivers the same webhook twice.
+// Google account → the storage id that holds their data.
+const accountKey = sub => `mira:account:google:${sub}`;
+export const getAccount = sub => redis(['GET', accountKey(sub)]);
+export const setAccount = (sub, id) => redis(['SET', accountKey(sub), id]);
+export const deleteAccount = sub => redis(['DEL', accountKey(sub)]);
+
 export async function firstTimeSeen(messageId) {
   return (await redis(['SET', `mira:seen:${messageId}`, '1', 'NX', 'EX', 86400])) === 'OK';
 }

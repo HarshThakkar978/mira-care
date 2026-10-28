@@ -102,7 +102,7 @@ def handle(body):
     if a == "load":
         if os.environ.get("SEED") and not u["symptoms"] and not u.get("_seeded"):
             seed(u); u["_seeded"] = True
-        return {"user": view(u), "communityUnread": 2 if u["community"]["joined"] else 0}
+        return {"user": view(u), "communityUnread": 2 if u["community"]["joined"] else 0, "googleClientId": os.environ.get("GOOGLE_ID", "")}
     if a == "transcript":
         loaded = int(body.get("loaded") or 0); end = max(0, len(u["transcript"]) - loaded)
         return {"messages": u["transcript"][max(0, end - PAGE):end], "remaining": max(0, end - PAGE)}

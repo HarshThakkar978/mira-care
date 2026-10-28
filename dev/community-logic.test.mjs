@@ -1,7 +1,7 @@
 // Tests the community's pure logic and Cura's idea card (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/community-logic.test.mjs
 import { canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len } from '../api/_lib/community-logic.js';
-import { handleIncoming, freshUser, normalizeUser } from '../api/_lib/mira.js';
+import { handleIncoming, freshUser, normalizeUser, mergeUsers } from '../api/_lib/mira.js';
 
 const log = (...a) => (globalThis.print || console.log)(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
 let fail = 0;
@@ -89,6 +89,14 @@ const today = '2026-10-27';
   check(results[1].is_error === true, 'unknown idea id returns an error to Claude');
   check(seen[0].tools.some(t => t.name === 'suggest_idea'), 'idea tool offered in the app');
   check(seen[0].messages[0].content.includes('<community_ideas>') && seen[0].messages[0].content.includes('"Keep a fan by your bed" for night sweats (bedtime, day 3 of 7)'), 'context has community ideas and the plan');
+
+  // Signing in on a phone that had its own notes
+  const acct = normalizeUser({ profile: { name: 'Ana', appointmentDate: '', clinician: '' }, symptoms: [{ id: 's1', date: '2026-10-20', name: 'cramps' }], cycleStarts: [{ id: 'c1', date: '2026-10-01' }], transcript: [{ from: 'you', text: 'hi', at: '2026-10-20T10:00:00Z' }] });
+  const phone = normalizeUser({ profile: { name: 'A', appointmentDate: '2026-11-05', clinician: '' }, symptoms: [{ id: 's1', date: '2026-10-20', name: 'cramps' }, { id: 's2', date: '2026-10-26', name: 'night sweats' }], cycleStarts: [{ id: 'x', date: '2026-10-01' }, { id: 'c2', date: '2026-10-25' }], transcript: [{ from: 'you', text: 'later', at: '2026-10-26T10:00:00Z' }, { from: 'you', text: 'hi', at: '2026-10-20T10:00:00Z' }] });
+  mergeUsers(acct, phone);
+  check(acct.symptoms.length === 2 && acct.cycleStarts.length === 2, 'merge keeps both sets of entries without duplicates');
+  check(acct.transcript.length === 2 && acct.transcript[1].text === 'later', 'merged chat is in time order');
+  check(acct.profile.name === 'Ana' && acct.profile.appointmentDate === '2026-11-05', "account's name wins, empty fields filled from the phone");
 
   log(fail ? `${fail} FAILED` : 'ALL PASSED');
 })().catch(e => log('CRASH', String(e), e.stack));

@@ -6,7 +6,7 @@
 // cura:tips (all tips), cura:read:<user> (last message they saw), cura:cal:<token> (calendar link → user).
 // Group members and message authors are stored by user key, which never leaves the server.
 import Anthropic from '@anthropic-ai/sdk';
-import { rcmd, getValue, setValue, getUsers, deleteUser } from './store.js';
+import { rcmd, getValue, setValue, getUsers, deleteUser, deleteAccount } from './store.js';
 import { MODEL, loadUser, storeUser, today } from './respond.js';
 import { normalizeUser } from './mira.js';
 import {
@@ -206,6 +206,7 @@ export async function leaveCommunity(key, user, { purge = false } = {}) {
 export async function eraseUser(key) {
   const user = await loadUser(key);
   await leaveCommunity(key, user, { purge: true });
+  if (user.account && user.account.sub) await deleteAccount(user.account.sub);
   await deleteUser(key);
 }
 

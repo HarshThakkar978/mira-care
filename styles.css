@@ -369,3 +369,4 @@ a.btn.primary{color:#fff}
 @media (prefers-color-scheme:dark){:root[data-theme="system"] a.btn.primary{color:#062a22}}
 @media (max-width:760px){body.kb-open .cm-tabs,body.kb-open .notice{display:none}}
 .group-head .chat-status{max-width:80%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.g-btn{display:flex;justify-content:center;min-height:44px;margin:4px auto}

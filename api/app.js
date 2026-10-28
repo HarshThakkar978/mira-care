@@ -2,9 +2,10 @@
 // Each device gets a random id (kept in the browser); data lives under "web-<id>" in Redis.
 import Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
-import { runTool, freshUser, normalizeUser } from './_lib/mira.js';
+import { runTool, freshUser, normalizeUser, mergeUsers } from './_lib/mira.js';
 import { miraReply, loadUser, storeUser, today, MODEL } from './_lib/respond.js';
-import { storeConfigured, addReminderUser, removeReminderUser } from './_lib/store.js';
+import { storeConfigured, addReminderUser, removeReminderUser, getAccount, setAccount } from './_lib/store.js';
+import { verifyGoogleToken } from './_lib/google.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 import {
   joinCommunity, updateCommunity, leaveCommunity, eraseUser, groupView, unreadCount, postMessage, extractTips,
@@ -39,7 +40,7 @@ export async function POST(request) {
   try {
     if (action === 'load') {
       const user = await loadUser(key);
-      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0) });
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
     }
 
     if (action === 'chat') {
@@ -117,6 +118,32 @@ export async function POST(request) {
     }
 
     if (action === 'draft') return json({ user: view(await draft(key, user, body.mode === 'after' ? 'after' : 'prep')) });
+
+    // ---------- Google sign-in ----------
+    // The account remembers which storage id holds their data. Signing in on another phone (or after deleting
+    // the app) hands that id back to the app, so everything comes back. A phone's own notes are merged in.
+    if (action === 'google-signin') {
+      const clientId = process.env.GOOGLE_CLIENT_ID;
+      if (!clientId) return json({ error: 'Google sign-in is not set up yet' }, 503);
+      let g;
+      try { g = await verifyGoogleToken(body.credential, clientId); }
+      catch (e) { console.error('google sign-in rejected', e.message); return json({ error: "Couldn't sign you in with Google. Please try again." }, 401); }
+      // A phone already signed in to a different Google account has to sign out first, so accounts never mix.
+      if (user.account && user.account.sub && user.account.sub !== g.sub) return json({ error: 'This phone is signed in to another account. Sign out in Me first.' }, 409);
+      const linked = await getAccount(g.sub);
+      let target = user, targetKey = key, merged = false;
+      if (linked && linked !== key) {
+        target = await loadUser(linked);
+        targetKey = linked;
+        if (hasData(user)) { mergeUsers(target, user); merged = true; }
+      }
+      target.account = { provider: 'google', sub: g.sub, email: g.email, linkedAt: (target.account && target.account.linkedAt) || new Date().toISOString() };
+      if (!target.profile.name && g.name) target.profile.name = g.name;
+      await storeUser(targetKey, target);
+      await setAccount(g.sub, targetKey);
+      if (targetKey !== key) await eraseUser(key); // this phone's old record now lives in the account
+      return json({ deviceId: targetKey.slice('web-'.length), merged, restored: targetKey !== key, user: view(target) });
+    }
 
     // ---------- Community ----------
     const since = typeof body.since === 'string' ? body.since : '';

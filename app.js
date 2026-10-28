@@ -1,6 +1,6 @@
 (() => {
   // ---------- Storage & identity ----------
-  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded', THEME_KEY = 'mira-theme';
+  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded', THEME_KEY = 'mira-theme', ACCT_KEY = 'mira-account-prompt';
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -67,7 +67,7 @@
   // ---------- Routing ----------
   const ROUTES = ['chat', 'today', 'community', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
-  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false };
+  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, googleId: '', signingIn: false, confirmSignOut: false };
   function freshCm() { return { tab: 'group', group: null, messages: [], loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
@@ -89,7 +89,7 @@
     document.querySelectorAll('textarea.ag-text').forEach(autoGrow);
     if (route === 'today') maybeLoadInsight();
     renderSheet();
-    syncPoll(); updateBadge();
+    syncPoll(); updateBadge(); renderGoogleButtons();
     if (route === 'community' && joined()) {
       if (!ui.cm.loaded) loadGroup(true);
       if (ui.cm.tab === 'ideas' && ui.cm.ideas === null) loadIdeas();
@@ -429,6 +429,9 @@
     const counts = [[user.symptoms.length, 'symptom'], [user.cycleStarts.length, 'period start'], [user.checkins.length, 'check-in'], [user.preNotes.length + user.postNotes.length, 'visit note']];
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">Settings</div><h1 class="title">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${counts.map(([n, w]) => plural(n, w)).join(' · ')}</p></div>
+      ${ui.googleId ? `<div class="card"><h2 class="card-title">🔒 Your account</h2>${user.account
+        ? `<p class="card-sub">Signed in with Google as <b>${esc(user.account.email)}</b>. Your Cura is saved to your account: sign in on any phone to see it.</p><button class="btn ghost" data-action="sign-out">${ui.confirmSignOut ? 'Tap again to sign out of this phone' : 'Sign out'}</button>`
+        : `<p class="card-sub">Sign in so your Cura is saved to your account. If you change phones or delete the app, sign in again and everything comes back.</p>${accountBlock()}`}</div>` : ''}
       <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Cura calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
       ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Cura to your Home Screen</h2>${installHelp()}</div>`}
       <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
@@ -721,6 +724,55 @@
       <button class="btn danger" data-action="cm-leave" style="width:100%">${ui.cm.confirmLeave ? 'Tap again to leave the community' : 'Leave the community'}</button>`;
   }
 
+  // ---------- Google sign-in ----------
+  // The Google button is drawn by Google's script into each .g-btn placeholder.
+  function accountBlock() {
+    if (user.account) return `<p class="pill" style="margin:0 auto">✓ Signed in as ${esc(user.account.email)}</p>`;
+    return ui.signingIn ? '<p class="small muted">Signing you in…</p>' : '<div class="g-btn" aria-label="Continue with Google"></div>';
+  }
+  function accountSheetHtml() {
+    return `<div class="ob"><div class="ob-art">🔒</div><h2 id="sheetTitle" class="ob-title">Keep your Cura safe</h2>
+      <p class="ob-text">Sign in with Google so everything you've told Cura is saved to your account. If you change phones or delete the app, just sign in again.</p>
+      ${accountBlock()}</div>
+      <div class="row" style="margin-top:16px;justify-content:center"><button class="btn ghost" data-action="account-later">Not now</button></div>`;
+  }
+  let googleReady = false;
+  function loadGoogle() {
+    if (!ui.googleId || document.getElementById('gsi')) return;
+    const sc = document.createElement('script');
+    sc.id = 'gsi'; sc.src = 'https://accounts.google.com/gsi/client'; sc.async = true;
+    sc.onload = () => {
+      window.google.accounts.id.initialize({ client_id: ui.googleId, callback: onGoogleCredential, ux_mode: 'popup', auto_select: false, cancel_on_tap_outside: true });
+      googleReady = true; renderGoogleButtons();
+    };
+    document.head.appendChild(sc);
+  }
+  function renderGoogleButtons() {
+    if (!googleReady) return;
+    const dark = document.documentElement.getAttribute('data-theme') === 'dark' || (currentTheme() === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
+    document.querySelectorAll('.g-btn:not([data-ready])').forEach(el => {
+      el.dataset.ready = '1';
+      window.google.accounts.id.renderButton(el, { type: 'standard', theme: dark ? 'filled_black' : 'outline', size: 'large', text: 'continue_with', shape: 'pill', logo_alignment: 'center', width: Math.min(320, Math.max(220, el.clientWidth || 300)) });
+    });
+  }
+  // Google hands back a signed token; the server checks it and tells the app which saved data is theirs.
+  async function onGoogleCredential(resp) {
+    ui.signingIn = true; if (ui.sheet) renderSheet(); else render();
+    try {
+      const d = await api('google-signin', { credential: resp.credential }, { keepUser: true });
+      if (d.deviceId && d.deviceId !== deviceId) { deviceId = d.deviceId; store.set(ID_KEY, deviceId); }
+      user = emptyUser(); ui.older = []; ui.seen = null; ui.cm = freshCm(); ui.calUrl = ''; ui.insight = ''; ui.insightTried = false;
+      setUser(d.user);
+      store.set(ACCT_KEY, '1');
+      const first = user.profile.name ? `, ${user.profile.name}` : '';
+      toast(d.restored ? `Welcome back${first}! Your Cura is all here.` : `Signed in. Your Cura is saved to ${d.user.account.email}.`);
+      if (ui.sheet === 'account' || (ui.sheet === 'welcome' && d.restored && hasData(user))) { if (ui.sheet === 'welcome') store.set(OB_KEY, '1'); ui.sheet = null; }
+      api('load', {}, { keepUser: true }).then(x => { ui.unread = x.communityUnread || 0; updateBadge(); }).catch(() => {});
+    } catch (e) { toast(e.message); }
+    ui.signingIn = false;
+    render();
+  }
+
   // ---------- Calendar subscription ----------
   function calLinks() {
     if (!ui.calUrl) return null;
@@ -761,6 +813,7 @@
   function closeSheet() {
     if (ui.sheet === 'welcome') { saveObName(); store.set(OB_KEY, '1'); }
     if (ui.sheet === 'cm') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; }
+    if (ui.sheet === 'account') store.set(ACCT_KEY, '1');
     ui.sheet = null; renderSheet();
   }
   function quickLogHtml() {
@@ -793,7 +846,7 @@
       render();
     } catch (e) { L.saving = false; toast(e.message); renderSheet(); }
   }
-  const obSteps = () => ['meet', 'name', ...(isStandalone() ? [] : ['install']), 'remind', 'plan'];
+  const obSteps = () => ['meet', ...(ui.googleId ? ['account'] : []), 'name', ...(isStandalone() ? [] : ['install']), 'remind', 'plan'];
   function welcomeHtml() {
     const steps = obSteps();
     const step = steps[Math.min(ui.ob, steps.length - 1)], last = ui.ob >= steps.length - 1;
@@ -803,6 +856,10 @@
         <p class="ob-text">Text Cura how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
         <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>👥 <span>Swap what helps with people like you</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
         <p class="ob-hint">Prefer dark mode? Pick it here, or anytime in <b>Me → Appearance</b>.</p>${themeSeg()}`,
+      account: `<div class="ob-art">🔒</div><h2 id="sheetTitle" class="ob-title">Keep your Cura safe</h2>
+        <p class="ob-text">Sign in so your notes, chats and plan are saved to your account. Change phones or delete the app, and everything comes back when you sign in again.</p>
+        ${accountBlock()}
+        <p class="ob-hint">Already use Cura? Sign in to bring everything back. Or tap Next to do this later in <b>Me</b>.</p>`,
       name: `<div class="ob-art">👋</div><h2 id="sheetTitle" class="ob-title">What should we call you?</h2>
         <p class="ob-text">Cura will use your first name now and then. You can skip this or change it anytime in <b>Me</b>.</p>
         <label class="sr-only" for="obName">Your first name</label>
@@ -836,8 +893,9 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet');
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml }[ui.sheet]()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml }[ui.sheet]()}</div>`;
     if (!wasOpen) root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
+    renderGoogleButtons();
   }
 
   // ---------- Doctor summary (print / save as PDF) ----------
@@ -919,6 +977,7 @@
     const act = a.dataset.action;
     if (act !== 'reset') ui.confirmReset = false;
     if (act !== 'cm-leave') ui.cm.confirmLeave = false;
+    if (act !== 'sign-out') ui.confirmSignOut = false;
     if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
     else if (act === 'older') loadOlder();
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
@@ -1006,6 +1065,14 @@
     else if (act === 'plan-remove') guarded(() => api('plan-remove', { item: a.dataset.id }), 'Removed from your plan');
     else if (act === 'cal-open') { ui.calTried = false; ui.sheet = 'cal'; renderSheet(); ensureCalUrl(); }
     else if (act === 'cal-copy') copy(ui.calUrl, 'Calendar link copied');
+    else if (act === 'account-later') { store.set(ACCT_KEY, '1'); closeSheet(); }
+    else if (act === 'sign-out') {
+      if (!ui.confirmSignOut) { ui.confirmSignOut = true; renderInPlace(); return; }
+      // Your data stays in your account; this phone just starts fresh until you sign in again.
+      try { window.google?.accounts.id.disableAutoSelect(); } catch {}
+      store.set(ID_KEY, newId()); store.del(CACHE_KEY); store.del(OB_KEY);
+      location.reload();
+    }
     else if (act === 'reminder-on') {
       ui.reminderBusy = true; render();
       try { await enableReminders(); toast(`Reminder on: around ${hourLabel(user.reminder.hour)} each day`); } catch (err) { toast(err.message); }
@@ -1089,6 +1156,7 @@
     try {
       const d = await api('load');
       ui.unread = d.communityUnread || 0; updateBadge();
+      ui.googleId = d.googleClientId || ''; loadGoogle();
       // Bring over entries saved by the old browser-only version of the site.
       const old = store.get(OLD_KEY);
       if (old && !hasData(user)) {
@@ -1100,6 +1168,8 @@
       if (route === 'chat') refreshThread(); else render();
       // First visit: a short welcome tour.
       if (!store.get(OB_KEY) && !hasData(user) && !ui.sheet) { ui.ob = 0; ui.sheet = 'welcome'; renderSheet(); }
+      // People who started before accounts existed: one gentle prompt to save their Cura.
+      else if (ui.googleId && !user.account && hasData(user) && !store.get(ACCT_KEY) && !ui.sheet) { ui.sheet = 'account'; renderSheet(); }
     } catch (e) { toast('Offline: showing your last saved data'); }
   })();
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

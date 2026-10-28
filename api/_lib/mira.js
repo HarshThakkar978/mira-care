@@ -229,6 +229,21 @@ export function normalizeUser(user) {
   return out;
 }
 
+// Signing in on a phone that already had notes, when the Google account has its own: keep everything.
+// Adds `from`'s entries to `into` (skipping ones already there) and fills empty profile fields.
+export function mergeUsers(into, from) {
+  const byId = (a, b) => { const ids = new Set(a.map(x => x.id)); return [...a, ...b.filter(x => !ids.has(x.id))]; };
+  for (const k of ['symptoms', 'checkins', 'preNotes', 'postNotes', 'plan']) into[k] = byId(into[k] || [], from[k] || []);
+  const dates = new Set(into.cycleStarts.map(c => c.date));
+  into.cycleStarts = [...into.cycleStarts, ...from.cycleStarts.filter(c => !dates.has(c.date))];
+  const seen = new Set();
+  into.transcript = [...into.transcript, ...from.transcript]
+    .filter(m => { const k = `${m.at}|${m.from}|${m.text}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => String(a.at).localeCompare(String(b.at))).slice(-300);
+  for (const k of ['name', 'appointmentDate', 'clinician']) if (!into.profile[k] && from.profile[k]) into.profile[k] = from.profile[k];
+  return into;
+}
+
 export function localDate(timeZone, d = new Date()) {
   try { return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d); }
   catch { return d.toISOString().slice(0, 10); }
