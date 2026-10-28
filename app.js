@@ -96,7 +96,8 @@
   window.addEventListener('hashchange', () => { const r = location.hash.slice(1); if (ROUTES.includes(r) && r !== route) { route = r; render(); } });
 
   function render() {
-    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === route));
+    const tab = { cycle: 'today', visit: 'today', report: 'today' }[route] || route;
+    document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === tab));
     const view = $('#view');
     view.innerHTML = { chat: renderChat, today: renderToday, community: renderCommunity, cycle: renderCycle, visit: renderVisit, me: renderMe, report: renderReport }[route]();
     if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
@@ -121,7 +122,25 @@
     const day = sameDay ? 'Today' : d.toDateString() === y.toDateString() ? 'Yesterday' : d.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
     return `<b>${day}</b> ${time}`;
   };
-  const WELCOME = "Hi, I'm Cura 💚 Text me whenever you like: how you're feeling, a symptom, or when your period starts. I'll keep track of it all and help you get ready for appointments.";
+  // Cura's first message, built from what they picked in the welcome tour.
+  function welcomeText() {
+    const name = user.profile.name ? ` ${user.profile.name}` : '';
+    const picks = (user.community && user.community.focus || []).map(x => x.toLowerCase()).slice(0, 3);
+    const list = picks.length <= 1 ? picks.join('') : `${picks.slice(0, -1).join(', ')} and ${picks[picks.length - 1]}`;
+    return picks.length
+      ? `Hi${name}, I'm Cura 💜 ${list[0].toUpperCase() + list.slice(1)} can be so draining. How have things been lately?`
+      : `Hi${name}, I'm Cura 💜 Text me whenever you like: how you feel, a symptom, or when your period starts. I'll keep track and help you get ready for appointments.`;
+  }
+  const checkedInToday = () => user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
+  // Once a day, until they check in, Cura's question and the five faces sit at the end of the chat.
+  function dailyAsk(msgs) {
+    if (ui.pending || ui.failed || checkedInToday()) return '';
+    const last = msgs[msgs.length - 1];
+    if (last && (last.ui || last.from === 'you' || new Date(last.at).toDateString() === new Date().toDateString())) return '';
+    const h = new Date().getHours(), name = user.profile.name ? `, ${user.profile.name}` : '';
+    const hello = msgs.length ? `${h < 12 ? 'Morning' : h < 18 ? 'Hi' : 'Evening'}${name} ${h < 18 ? '☀️' : '🌙'} How are you feeling today?` : '';
+    return `${hello ? `<div class="msg them tail">${fmtMsg(hello)}</div>` : ''}<div class="mood-row" role="group" aria-label="How are you feeling today?">${MOODS.map(m => `<button class="mood-btn" data-chip="Feeling ${m.toLowerCase()} today">${moodFace(m, 30)}<span>${m}</span></button>`).join('')}</div>`;
+  }
 
   function threadHtml() {
     const msgs = allMsgs();
@@ -129,20 +148,22 @@
     // Only messages that arrived since the last render get the entrance animation.
     const fresh = ui.seen === null ? msgs.length : ui.seen;
     let html = total > msgs.length ? `<button class="load-older no-print" data-action="older" ${ui.loadingOlder ? 'disabled' : ''}>${ui.loadingOlder ? 'Loading…' : 'Load earlier messages'}</button>` : '';
-    if (!msgs.length) html += `<div class="stamp"><b>Cura</b></div><div class="msg them tail">${fmtMsg(WELCOME)}</div>`;
+    if (!msgs.length) html += `<div class="stamp"><b>Cura</b></div><div class="msg them tail">${fmtMsg(welcomeText())}</div>`;
     msgs.forEach((m, i) => {
       const prev = msgs[i - 1], next = msgs[i + 1];
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
       if (m.idea) html += ideaCardHtml(m.idea, true);
+      if (m.cta && !(m.cta.route === 'community' && joined())) html += `<button class="msg-cta" data-route="${esc(m.cta.route)}">${esc(m.cta.label)} ›</button>`;
     });
     ui.seen = msgs.length;
     if (ui.pending) html += `<div class="msg me tail pop">${fmtMsg(ui.pending)}</div>` + (ui.live
       ? `<div class="msg them tail live" id="live">${fmtMsg(ui.live)}</div>`
       : `<div class="typing" aria-label="Cura is typing"><i></i><i></i><i></i></div>`);
     else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
-    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || `<div class="msg-status">Delivered</div>`;
+    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || dailyAsk(msgs) || `<div class="msg-status">Delivered</div>`;
+    else html += dailyAsk(msgs);
     return html;
   }
   // Tap-to-answer buttons Cura attached to her latest question (scale, options or pick-several).
@@ -163,6 +184,7 @@
   function chipsHtml() {
     const last = allMsgs().slice(-1)[0];
     if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Cura's own answer buttons take over
+    if (dailyAsk(allMsgs())) return ''; // so do the mood faces
     const first = !(user.transcript || []).length;
     const list = first
       ? ['Feeling okay today', 'Rough day today', 'My period started today', 'I had hot flashes last night']
@@ -173,12 +195,12 @@
     const tip = isIOS() && !isStandalone() && !store.get(TIP_KEY)
       ? `<div class="install no-print"><span>📲</span><span><b>Keep Cura on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
     return `<section class="chat">
-      <header class="chat-head"><div class="avatar">c</div><div class="chat-name">Cura</div><div class="chat-status">Your perimenopause companion</div></header>
+      <header class="chat-head"><div class="avatar">c</div><div class="ch-main"><div class="chat-name">Cura</div><div class="chat-status">Here for you, day or night</div></div>
+        <button class="head-plus no-print" type="button" data-action="quick-log" aria-label="Quick check-in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
       ${tip}
       <div class="thread" id="thread" aria-live="polite">${threadHtml()}</div>
       <div class="chips no-print" id="chips">${chipsHtml()}</div>
       <form class="composer no-print" id="composer">
-        <button class="plus" type="button" data-action="quick-log" aria-label="Quick log a symptom or period"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
         <label class="sr-only" for="msgInput">Message Cura</label>
         <textarea id="msgInput" rows="1" placeholder="Message Cura" enterkeyhint="send" autocomplete="off"></textarea>
         <button class="send" id="sendBtn" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
@@ -256,10 +278,39 @@
 
   function renderToday() {
     const name = user.profile.name;
-    const ls = lastStart(), gaps = cycleGaps();
-    const avg = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : null;
-    const since = ls ? diffDays(ls.date, today()) + 1 : null;
+    const ls = lastStart(), since = ls ? diffDays(ls.date, today()) + 1 : null;
     const appt = user.profile.appointmentDate, apptIn = appt ? diffDays(today(), appt) : null;
+    const hasAgenda = user.agenda.summary || user.agenda.topics.length;
+    // This week: one circle per day, darker for stronger symptoms, rose when a period started, dashed if nothing logged.
+    const starts = new Set(user.cycleStarts.map(c => c.date));
+    const days = Array.from({ length: 7 }, (_, i) => {
+      const d = addDays(today(), i - 6);
+      const sev = Math.max(0, ...user.symptoms.filter(x => x.date === d).map(x => Number(x.severity) || 3));
+      const any = sev || user.checkins.some(c => c.date === d);
+      const cls = starts.has(d) ? 'p' : sev ? 's' + Math.min(5, Math.ceil(sev / 2)) : any ? 's1' : 'none';
+      const label = `${fmtLong(d)}: ${starts.has(d) ? 'period started' : sev ? `symptoms up to ${sev}/10` : any ? 'checked in' : 'nothing logged'}`;
+      return { d, cls, label, letter: parse(d).toLocaleDateString(undefined, { weekday: 'narrow' }), today: d === today() };
+    });
+    const showedUp = days.filter(x => x.cls !== 'none').length;
+    return `<div class="page today-page">
+      <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'short', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
+      ${circleInviteCard()}
+      <div class="card week-card">
+        <div class="row"><h2 class="card-title">This week</h2>${showedUp ? `<span class="pill peach">${plural(showedUp, 'check-in')} 🌟</span>` : `<button class="btn small soft" data-action="quick-log">Check in</button>`}</div>
+        <div class="week" role="list">${days.map(x => `<div class="wday" role="listitem" aria-label="${esc(x.label)}"><span class="${x.today ? 'now' : ''}">${x.letter}</span><i class="${x.cls}${x.today ? ' today' : ''}"></i></div>`).join('')}</div>
+        <p class="small muted" style="margin:0">Darker = stronger symptoms · rose = period started</p>
+      </div>
+      ${planCard()}
+      ${insightCard()}
+      <div class="grid two tiles">
+        <a class="card tile-link" href="#visit" data-route="visit"><span class="small muted">Next visit</span><span class="tile-big">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : 'Not set'}</span><span class="tile-go">${appt ? (hasAgenda ? 'Agenda ready ›' : 'Prepare ›') : 'Add a date ›'}</span></a>
+        <a class="card tile-link" href="#cycle" data-route="cycle"><span class="small muted">Cycle</span><span class="tile-big">${since ? `Day ${since}` : '—'}</span><span class="tile-go">Calendar ›</span></a>
+      </div>
+      <p class="note">Cura organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
+    </div>`;
+  }
+  // The 30-day strip and most frequent symptoms, shown on the Cycle screen.
+  function trendsHtml() {
     const s30 = symptomsSince(30), top = topSymptoms(s30).slice(0, 6), maxDays = Math.max(1, ...top.map(t => t.days.size));
     const logged = new Set([...s30.map(s => s.date), ...user.checkins.filter(c => c.date >= addDays(today(), -29)).map(c => c.date)]);
     const daySev = {}; s30.forEach(s => { daySev[s.date] = Math.max(daySev[s.date] || 0, Number(s.severity) || 3); });
@@ -270,42 +321,19 @@
       const label = `${fmt(d)}${sev ? `: symptoms up to ${sev}/10` : ''}${starts.has(d) ? ', period started' : ''}`;
       return `<span style="${bg}" class="${starts.has(d) ? 'p' : ''}${d === today() ? ' today' : ''}" title="${esc(label)}" aria-label="${esc(label)}"></span>`;
     }).join('');
-    const lastCheck = [...user.checkins].sort((a, b) => (b.savedAt || b.date).localeCompare(a.savedAt || a.date))[0];
-    const checkedToday = user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
-    return `<div class="page">
-      <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'long', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
-      <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Cura if anything changes.' : 'Text Cura, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
-      <div class="quick-row no-print">
-        <button class="btn ghost" data-action="quick-log">➕ Quick log</button>
-        ${user.reminder && user.reminder.enabled && ui.pushHere !== 'no' ? `<button class="btn ghost" data-route="report">📄 Doctor summary</button>` : `<button class="btn ghost" data-route="me">🔔 ${user.reminder && user.reminder.enabled ? 'Reminders on this phone' : 'Daily reminder'}</button>`}
-      </div>
-      ${insightCard()}
-      ${planCard()}
-      <div class="grid three">
-        <div class="card stat"><div class="stat-label">Since last period</div><div class="stat-value">${since ? plural(since, 'day') : '—'}</div><div class="stat-note">${ls ? 'Started ' + fmt(ls.date) : 'Tell Cura when it starts'}</div></div>
-        <div class="card stat"><div class="stat-label">Average gap</div><div class="stat-value">${avg ? avg + ' days' : '—'}</div><div class="stat-note">${gaps.length ? `Across ${plural(gaps.length + 1, 'period')} · last ${gaps[gaps.length - 1]} days` : 'Needs two period starts'}</div></div>
-        <div class="card stat"><div class="stat-label">Next appointment</div><div class="stat-value">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : '—'}</div><div class="stat-note">${appt ? fmtLong(appt) + (user.profile.clinician ? ' · ' + esc(user.profile.clinician) : '') : '<a href="#visit" data-route="visit">Add a date</a>'}</div></div>
-      </div>
-      <div class="card" style="margin-top:14px">
+    return `<div class="card">
         <div class="row"><h2 class="card-title">Last 30 days</h2><span class="pill">${plural(logged.size, 'day')} logged</span></div>
         <div class="strip" role="img" aria-label="Symptom intensity over the last 30 days">${strip}</div>
         <div class="row small muted"><span>${fmt(addDays(today(), -29))}</span><span>Today</span></div>
-        <div class="legend"><span><i style="background:var(--sev-1)"></i>Mild</span><span><i style="background:var(--sev-3)"></i>Moderate</span><span><i style="background:var(--sev-5)"></i>Strong</span><span><i style="background:var(--rose);border-radius:50%"></i>Period started</span></div>
       </div>
-      <div class="grid two" style="margin-top:14px">
-        <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
-          ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
-        </div>
-        <div class="card"><h2 class="card-title">Recent</h2><p class="card-sub">The latest things you told Cura</p>${recentList()}</div>
-      </div>
-      ${lastCheck ? `<p class="note">Last check-in: “${esc(lastCheck.feeling)}” · ${fmtLong(lastCheck.date)}</p>` : ''}
-      <p class="note">Cura organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
-    </div>`;
+      <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
+        ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
+      </div>`;
   }
   function insightCard() {
     const text = ui.insight || (user.insight && user.insight.text);
     if (!text && !ui.insightLoading) return '';
-    return `<div class="card insight"><div class="row"><h2 class="card-title">✨ Your week</h2><span class="small muted">From Cura</span></div>
+    return `<div class="card insight"><div class="insight-kicker">Cura noticed</div>
       ${text ? `<p class="insight-text">${esc(text)}</p>` : '<div class="skel" style="width:92%"></div><div class="skel" style="width:70%"></div>'}</div>`;
   }
   // Asks Cura for a short read of the last 7 days once per visit to Today (the server caches it).
@@ -349,6 +377,7 @@
     const selCheck = user.checkins.filter(c => c.date === sel);
     const gaps = sortedStarts();
     return `<div class="page">
+      <button class="back no-print" data-route="today">‹ Today</button>
       <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add what happened. Anything you tell Cura in chat shows up here too.</p></div>
       <div class="card">
         <div class="cal-head"><button class="icon-btn" data-action="month" data-dir="-1" aria-label="Previous month">‹</button><div class="cal-title">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div><button class="icon-btn" data-action="month" data-dir="1" aria-label="Next month">›</button></div>
@@ -365,6 +394,7 @@
         <h2 class="card-title">Period history</h2><p class="card-sub">Days between period starts are counted for you.</p>
         ${gaps.length ? [...gaps].reverse().map((c, i, arr) => { const prev = arr[i + 1]; return `<div class="list-item"><span aria-hidden="true">🩸</span><div class="li-main"><div class="li-title">${esc(fmtLong(c.date))}</div><div class="li-meta">${prev ? diffDays(prev.date, c.date) + ' days after the previous start' : 'First one logged'}</div></div><button class="icon-btn" data-action="del" data-kind="period_start" data-id="${esc(c.id)}" aria-label="Remove">×</button></div>`; }).join('') : `<div class="empty"><strong>No period dates yet</strong>Tap a day above, or tell Cura “my period started today”.</div>`}
       </div>
+      ${trendsHtml()}
     </div>`;
   }
   function symItem(s) {
@@ -384,6 +414,7 @@
     const tabs = [['before', 'Before'], ['agenda', 'Agenda'], ['after', 'After']];
     const body = ui.visitTab === 'before' ? visitBefore() : ui.visitTab === 'agenda' ? visitAgenda() : visitAfter();
     return `<div class="page">
+      <button class="back no-print" data-route="today">‹ Today</button>
       <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Collect what you want to raise, let Cura turn it into an agenda, and keep track of next steps.</p>
         <button class="btn ghost no-print" data-route="report" style="margin-top:12px">📄 Summary for my doctor</button></div>
       <div class="seg no-print" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${ui.visitTab === k}" class="${ui.visitTab === k ? 'on' : ''}" data-visit="${k}">${l}</button>`).join('')}</div>
@@ -450,9 +481,9 @@
       <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Cura calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
       ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Cura to your Home Screen</h2>${installHelp()}</div>`}
       <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
-      <div class="card"><h2 class="card-title">👥 Community</h2>${joined()
+      <div class="card"><h2 class="card-title">👥 Circle</h2>${joined()
         ? `<p class="card-sub">You're in <b>${esc((ui.cm.group && ui.cm.group.name) || 'a group')}</b>, shown as <b>${esc(user.community.anonymous || !user.profile.name ? user.community.alias : user.profile.name)}</b>.</p><button class="btn ghost" data-action="cm-settings">Group settings</button>`
-        : `<p class="card-sub">Talk with a small group of people whose symptoms are like yours.</p><button class="btn ghost" data-route="community">Join the community</button>`}</div>
+        : `<p class="card-sub">Talk with a small group of people whose symptoms are like yours.</p><button class="btn ghost" data-route="community">Open the Circle</button>`}</div>
       <div class="card"><h2 class="card-title">📅 Calendar</h2><p class="card-sub">Put your plan and your next appointment on Apple or Google Calendar. It updates by itself.</p><button class="btn ghost" data-action="cal-open">Add to my calendar</button></div>
       <div class="card"><h2 class="card-title">🎨 Appearance</h2><p class="card-sub">Light, dark, or follow your phone's setting.</p>${themeSeg()}</div>
       <div class="card"><h2 class="card-title">Use Cura on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
@@ -460,7 +491,7 @@
       <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
         <div class="row-wrap"><button class="btn ghost" data-action="export">Download my data</button>
         <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
-      <div class="card"><h2 class="card-title">📄 Summary for your doctor</h2><p class="card-sub">A one-page overview of your last 90 days to print or save as a PDF.</p><button class="btn ghost" data-route="report">Open summary</button></div>
+      <div class="card"><h2 class="card-title">📋 Visits</h2><p class="card-sub">Notes to bring up, your agenda, after-visit notes, and a one-page summary of the last 90 days to print or save as a PDF.</p><div class="row-wrap"><button class="btn ghost" data-route="visit">Open visits</button><button class="btn ghost" data-route="report">Doctor summary</button><button class="btn ghost" data-route="cycle">Cycle calendar</button></div></div>
       <button class="btn ghost" data-action="show-welcome" style="width:100%;margin-top:14px">Show the welcome tour again</button>
       <p class="note">Cura is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
     </div>`;
@@ -495,7 +526,7 @@
         ? `<span class="pill">On · around ${hourLabel(r.hour)}</span><button class="btn small ghost" data-action="test-push">Send a test</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
         : `<button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on daily reminder'}</button>`}</div>`;
   }
-  async function enableReminders() {
+  async function enableReminders(hourArg) {
     // Ask for permission first, straight from the tap (iPhone requires that).
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') throw new Error('Notifications were not allowed. You can allow them in Settings → Notifications → Cura.');
@@ -504,7 +535,7 @@
     let sub = await reg.pushManager.getSubscription();
     if (sub) { try { await sub.unsubscribe(); } catch {} }
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
-    const hour = Number($('#remHour')?.value || user.reminder?.hour || 20);
+    const hour = Number(hourArg || $('#remHour')?.value || user.reminder?.hour || 20);
     await api('reminder', { enabled: true, hour, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, subscription: sub.toJSON() });
     ui.pushHere = 'yes'; ui.pushEndpoint = sub.endpoint;
   }
@@ -516,7 +547,7 @@
     store.set(THEME_KEY, t);
     document.documentElement.setAttribute('data-theme', t);
     const dark = t === 'dark' || (t === 'system' && matchMedia('(prefers-color-scheme: dark)').matches);
-    $('#themeColor')?.setAttribute('content', dark ? '#000000' : '#f7f7f3');
+    $('#themeColor')?.setAttribute('content', dark ? '#15111D' : '#F7F4FB');
   }
   matchMedia('(prefers-color-scheme: dark)').addEventListener?.('change', () => { if (currentTheme() === 'system') applyTheme('system'); });
   const themeSeg = () => `<div class="seg" role="radiogroup" aria-label="Appearance" style="margin:0">${THEMES.map(([k, l]) => `<button role="radio" aria-checked="${currentTheme() === k}" class="${currentTheme() === k ? 'on' : ''}" data-theme-pick="${k}">${l}</button>`).join('')}</div>`;
@@ -534,6 +565,32 @@
   const WHEN_LABEL = { morning: 'Morning', midday: 'Midday', evening: 'Evening', bedtime: 'Bedtime', anytime: 'Any time' };
   const cap = t => (t ? t[0].toUpperCase() + t.slice(1) : '');
   const joined = () => !!(user.community && user.community.joined);
+  // Same rule as the server: open after 3 check-in days, or early if the team opened it.
+  const CIRCLE_DAYS = 3;
+  const checkinDays = () => new Set([...user.checkins, ...user.symptoms].map(x => x.date)).size;
+  const circleOpen = () => joined() || ui.circleOpenAll || !!user.circleEarly || checkinDays() >= CIRCLE_DAYS;
+  function lockedHtml() {
+    const n = Math.min(checkinDays(), CIRCLE_DAYS);
+    return `<div class="page">
+      <div class="page-head"><div class="eyebrow">Circle</div><h1 class="title">Your Circle is almost ready</h1>
+        <p class="sub">Cura puts you in a small group with people whose symptoms are like yours. A few check-ins first, so Cura knows who you'll click with.</p></div>
+      <div class="card lock-card">
+        <div class="lock-steps" aria-label="${n} of ${CIRCLE_DAYS} check-ins">${Array.from({ length: CIRCLE_DAYS }, (_, i) => `<i class="${i < n ? 'on' : ''}">${i < n ? '✓' : i + 1}</i>`).join('')}</div>
+        <p class="lock-text"><b>${n} of ${CIRCLE_DAYS} check-ins.</b> ${CIRCLE_DAYS - n === 1 ? "One more day and you're in." : `${CIRCLE_DAYS - n} more days and you're in.`}</p>
+        ${checkedInToday() ? '<p class="small muted" style="margin:0">You checked in today. Come back tomorrow 💜</p>' : '<button class="btn primary" data-action="quick-log" style="width:100%">Check in now</button>'}
+      </div>
+      <div class="card how-it-works">
+        <div class="hiw"><span>1</span><p><b>Cura finds your people.</b> Matched on the symptoms you live with and how strong they are.</p></div>
+        <div class="hiw"><span>2</span><p><b>Just chat.</b> Share what's helped, or just read along.</p></div>
+        <div class="hiw"><span>3</span><p><b>Try what worked.</b> The best tips become ideas you can add to your plan.</p></div>
+      </div>
+    </div>`;
+  }
+  // On Today, once the Circle opens and they haven't joined yet.
+  function circleInviteCard() {
+    if (joined() || !circleOpen()) return '';
+    return `<button class="cta soft" data-route="community"><span class="cta-ico" aria-hidden="true">👥</span><span><strong>Your Circle is ready</strong><small>People with symptoms like yours are swapping what helps.</small></span><span class="arrow">›</span></button>`;
+  }
   const inPlan = tipId => (user.plan || []).some(p => p.tipId === tipId && p.status === 'active');
   const activePlan = () => (user.plan || []).filter(p => p.status === 'active');
   const defaultFocus = () => topSymptoms(user.symptoms).slice(0, 4).map(t => cap(t.name));
@@ -550,7 +607,7 @@
     if (!ui.cm.join && ui.loaded) ui.cm.join = start();
     const J = ui.cm.join || start();
     return `<div class="page">
-      <div class="page-head"><div class="eyebrow">Community</div><h1 class="title">You're not alone in this</h1>
+      <div class="page-head"><div class="eyebrow">Circle</div><h1 class="title">You're not alone in this</h1>
         <p class="sub">Cura puts you in a small group with people whose symptoms are like yours. Swap what's helped, and Cura turns the best tips into ideas you can try.</p></div>
       <div class="card"><h2 class="card-title">What would you like to talk about?</h2>
         <p class="card-sub">${defaultFocus().length ? "We picked these from what you've told Cura. Change them if you like." : 'Pick any that fit. Cura uses them to find your group.'}</p>
@@ -572,7 +629,7 @@
   }
 
   function renderCommunity() {
-    if (!joined()) return joinHtml();
+    if (!joined()) return circleOpen() ? joinHtml() : lockedHtml();
     const g = ui.cm.group, notice = user.community.notice;
     const tabs = [['group', 'Group'], ['ideas', 'Ideas for you']];
     return `<section class="chat community">
@@ -680,7 +737,7 @@
       ? `<button class="btn small ghost" data-action="idea-visit" data-tip="${esc(i.id)}" data-title="${esc(i.title)}" data-symptom="${esc(i.symptom)}">📝 Ask my clinician about it</button>`
       : inPlan(i.id) ? '<span class="pill">✓ In your plan</span>' : `<button class="btn small primary" data-action="plan-add" data-tip="${esc(i.id)}">Add to my plan</button>`;
     return `<div class="${inChat ? 'idea in-chat' : 'card idea'}">
-      <div class="idea-kicker">${inChat ? '<span>🌿 From the community</span>' : ''}<span class="pill">${esc(cap(i.symptom))}</span><span>${esc(WHEN_LABEL[i.when] || 'Any time')}</span></div>
+      <div class="idea-kicker">${inChat ? '<span>🌿 From your Circle</span>' : ''}<span class="pill">${esc(cap(i.symptom))}</span><span>${esc(WHEN_LABEL[i.when] || 'Any time')}</span></div>
       <div class="idea-title">${esc(i.title)}</div>
       ${i.why ? `<p class="idea-why"><b>Why it may help:</b> ${esc(i.why)}</p>` : ''}
       ${!inChat && i.personal ? `<p class="idea-meta">${esc(i.personal)}</p>` : ''}
@@ -697,7 +754,7 @@
     if (!list.length) return top + `<div class="empty" style="margin-top:14px"><strong>No ideas yet</strong>As people share what's helped, the Cura team checks the tips and they show up here.</div>`;
     return top
       + (mine.length ? `<div class="section-kicker">For what you're dealing with</div>${mine.map(i => ideaCardHtml(i)).join('')}` : '')
-      + (more.length ? `<div class="section-kicker">${mine.length ? 'Also popular' : 'Popular in the community'}</div>${more.map(i => ideaCardHtml(i)).join('')}` : '')
+      + (more.length ? `<div class="section-kicker">${mine.length ? 'Also popular' : 'Popular in the Circle'}</div>${more.map(i => ideaCardHtml(i)).join('')}` : '')
       + `<p class="note">Ideas come from members' own experience and are checked by the Cura team. They're everyday things to try, not medical advice.</p>`;
   }
   async function loadIdeas() {
@@ -711,12 +768,13 @@
   function planCard() {
     const items = activePlan();
     if (!items.length) return joined()
-      ? `<button class="cta soft" data-action="cm-ideas"><span style="font-size:26px">🌿</span><span><strong>Ideas from your community</strong><small>Things that helped people like you. Add one to your plan.</small></span><span class="arrow">›</span></button>`
-      : `<button class="cta soft" data-route="community"><span style="font-size:26px">👥</span><span><strong>You're not alone in this</strong><small>Join a small group of people whose symptoms are like yours.</small></span><span class="arrow">›</span></button>`;
+      ? `<button class="cta soft" data-action="cm-ideas"><span class="cta-ico" aria-hidden="true">🌿</span><span><strong>Ideas from your Circle</strong><small>Things that helped people like you. Add one to your plan.</small></span><span class="arrow">›</span></button>`
+      : '';
     return `<div class="card plan-card">
-      <div class="row"><h2 class="card-title">🌿 Your plan</h2><button class="btn small ghost" data-action="cal-open">📅 Calendar</button></div>
-      <p class="card-sub" style="margin-bottom:4px">Ideas you picked from the community. Tick them off each day.</p>
+      <div class="row"><h2 class="card-title">Your plan</h2><span class="small muted">${items.filter(p => (p.done || []).includes(today())).length} of ${items.length} done</span></div>
+      <p class="card-sub" style="margin-bottom:4px">Ideas you picked from your Circle. Tick them off each day.</p>
       ${items.map(planItemHtml).join('')}
+      <button class="btn small ghost" data-action="cal-open" style="margin-top:8px">📅 Put it on my calendar</button>
     </div>`;
   }
   function planItemHtml(p) {
@@ -751,7 +809,7 @@
       <p class="small muted">Cura uses these, and what you log, when it sorts the groups each day.</p>
       ${changed ? `<button class="btn primary small" data-action="cm-focus-save" ${F.length ? '' : 'disabled'}>Save</button>` : ''}
       <div class="divider"></div>
-      <button class="btn danger" data-action="cm-leave" style="width:100%">${ui.cm.confirmLeave ? 'Tap again to leave the community' : 'Leave the community'}</button>`;
+      <button class="btn danger" data-action="cm-leave" style="width:100%">${ui.cm.confirmLeave ? 'Tap again to leave the Circle' : 'Leave the Circle'}</button>`;
   }
 
   // ---------- Google sign-in ----------
@@ -830,36 +888,53 @@
 
   // ---------- Bottom sheets: quick log and welcome tour ----------
   const COMMON_SYMPTOMS = ['Hot flashes', 'Night sweats', 'Trouble sleeping', 'Brain fog', 'Mood swings', 'Anxiety', 'Headache', 'Cramps', 'Joint pain', 'Fatigue', 'Bloating', 'Heavier flow'];
-  const MOODS = [['Rough', '😣'], ['Meh', '😕'], ['Okay', '🙂'], ['Good', '😊'], ['Great', '🤩']];
+  const MOODS = ['Rough', 'Meh', 'Okay', 'Good', 'Great'];
+  // Five faces that differ in shape as well as color.
+  function moodFace(m, size) {
+    const eyes = '<circle cx="12" cy="14" r="1.8" fill="#241B33"/><circle cx="22" cy="14" r="1.8" fill="#241B33"/>';
+    const f = {
+      Rough: ['#D2C3F4', eyes + '<path d="M11 24c3-3.5 9-3.5 12 0" fill="none" stroke="#241B33" stroke-width="2" stroke-linecap="round"/>'],
+      Meh: ['#E8E0FA', eyes + '<path d="M12 23h10" fill="none" stroke="#241B33" stroke-width="2" stroke-linecap="round"/>'],
+      Okay: ['#FDEBDF', eyes + '<path d="M12 21c2.5 2 7.5 2 10 0" fill="none" stroke="#241B33" stroke-width="2" stroke-linecap="round"/>'],
+      Good: ['#FBD9C4', eyes + '<path d="M11 20c3 4 9 4 12 0" fill="none" stroke="#241B33" stroke-width="2" stroke-linecap="round"/>'],
+      Great: ['#F4A97E', '<path d="M9.5 14.5l2.5-2 2.5 2M19.5 14.5l2.5-2 2.5 2" fill="none" stroke="#241B33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><path d="M10.5 19.5c3 5 10 5 13 0z" fill="#241B33"/>']
+    }[m];
+    return `<svg width="${size}" height="${size}" viewBox="0 0 34 34" aria-hidden="true"><circle cx="17" cy="17" r="15" fill="${f[0]}"/>${f[1]}</svg>`;
+  }
   function symptomChoices() {
-    const known = new Set(COMMON_SYMPTOMS.map(x => x.toLowerCase()));
-    const mine = topSymptoms(user.symptoms).map(t => t.name).filter(n => !known.has(n.toLowerCase())).slice(0, 4).map(n => n[0].toUpperCase() + n.slice(1));
-    return [...mine, ...COMMON_SYMPTOMS];
+    // Their most-logged and chosen symptoms first, then the common ones.
+    const mine = [...topSymptoms(user.symptoms).map(t => t.name), ...((user.community && user.community.focus) || [])].slice(0, 6).map(n => n[0].toUpperCase() + n.slice(1));
+    const seen = new Set();
+    return [...mine, ...COMMON_SYMPTOMS].filter(n => { const k = n.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
   }
   function openQuickLog(date) {
     ui.log = { date: date || today(), mood: '', syms: [], other: '', sev: 5, period: false, saving: false };
     ui.sheet = 'log'; renderSheet();
   }
   function closeSheet() {
-    if (ui.sheet === 'welcome') { saveObName(); store.set(OB_KEY, '1'); }
+    const wasTour = ui.sheet === 'welcome';
+    if (wasTour) { saveObName(); store.set(OB_KEY, '1'); }
     if (ui.sheet === 'cm') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; }
     if (ui.sheet === 'account') store.set(ACCT_KEY, '1');
-    ui.sheet = null; renderSheet();
+    ui.sheet = null;
+    if (wasTour) render(); else renderSheet(); // so Cura's first message picks up their answers
   }
   function quickLogHtml() {
     const L = ui.log, yesterday = addDays(today(), -1);
     const dayLabel = L.date === today() ? 'Today' : L.date === yesterday ? 'Yesterday' : fmtLong(L.date);
     const picked = L.syms.length || L.other.trim();
-    return `<div class="sheet-head"><h2 id="sheetTitle" class="card-title">Quick log</h2><button class="icon-btn" data-action="sheet-close" aria-label="Close">×</button></div>
-      <div class="seg" role="tablist">${[[today(), 'Today'], [yesterday, 'Yesterday']].map(([d, l]) => `<button role="tab" aria-selected="${L.date === d}" class="${L.date === d ? 'on' : ''}" data-log-date="${d}">${l}</button>`).join('')}${L.date !== today() && L.date !== yesterday ? `<button class="on" aria-selected="true">${esc(dayLabel)}</button>` : ''}</div>
-      <div class="section-kicker">How do you feel?</div>
-      <div class="moods">${MOODS.map(([m, e]) => `<button class="mood ${L.mood === m ? 'on' : ''}" data-mood="${m}" aria-pressed="${L.mood === m}"><span aria-hidden="true">${e}</span>${m}</button>`).join('')}</div>
-      <div class="section-kicker">Symptoms</div>
+    const label = [...L.syms, L.other.trim()].filter(Boolean).join(', ');
+    return `<div class="sheet-head"><h2 id="sheetTitle" class="sheet-title">How's ${L.date === today() ? 'today' : L.date === yesterday ? 'yesterday' : esc(dayLabel)}?</h2><button class="icon-btn soft" data-action="sheet-close" aria-label="Close">×</button></div>
+      <div class="moods">${MOODS.map(m => `<button class="mood ${L.mood === m ? 'on' : ''}" data-mood="${m}" aria-pressed="${L.mood === m}">${moodFace(m, 30)}${m}</button>`).join('')}</div>
+      <div class="ci-label">Anything bothering you? <span>Your usual ones first</span></div>
       <div class="chipset">${symptomChoices().map(n => `<button class="chip ${L.syms.includes(n) ? 'on' : ''}" data-sym="${esc(n)}" aria-pressed="${L.syms.includes(n)}">${esc(n)}</button>`).join('')}</div>
       <input class="input" style="margin-top:10px" data-log-other placeholder="Something else? Type it here" maxlength="60" value="${esc(L.other)}">
-      ${picked ? `<div class="field" style="margin-top:14px"><label for="logSev">How strong? <output id="logSevOut">${L.sev}</output>/10</label><input id="logSev" type="range" min="1" max="10" value="${L.sev}" data-log-sev><div class="sev-row"><span>Mild</span><span>Strong</span></div></div>` : ''}
-      <label class="toggle"><input type="checkbox" data-log-period ${L.period ? 'checked' : ''}><span>🩸 My period started ${L.date === today() ? 'today' : 'this day'}</span></label>
-      <button class="btn primary" data-action="log-save" style="width:100%;margin-top:6px" ${L.saving ? 'disabled' : ''}>${L.saving ? 'Saving…' : 'Save'}</button>`;
+      ${picked ? `<div class="sev-box"><div class="row"><b>${esc(label)}</b><b class="sev-val"><output id="logSevOut">${L.sev}</output> / 10</b></div>
+        <div class="sev-bar" role="group" aria-label="How strong, 1 to 10">${Array.from({ length: 10 }, (_, i) => `<button class="${i < L.sev ? 'on' : ''}" data-log-sevbtn="${i + 1}" aria-label="${i + 1} out of 10" aria-pressed="${i + 1 === L.sev}"></button>`).join('')}</div>
+        <div class="sev-row"><span>Mild</span><span>Strong</span></div></div>` : ''}
+      <label class="toggle"><span>My period started ${L.date === today() ? 'today' : 'this day'}</span><input type="checkbox" data-log-period ${L.period ? 'checked' : ''}></label>
+      <div class="row ci-foot"><div class="seg small-seg" role="tablist">${[[today(), 'Today'], [yesterday, 'Yesterday']].map(([d, l]) => `<button role="tab" aria-selected="${L.date === d}" class="${L.date === d ? 'on' : ''}" data-log-date="${d}">${l}</button>`).join('')}</div>
+      <button class="btn primary" data-action="log-save" ${L.saving ? 'disabled' : ''}>${L.saving ? 'Saving…' : 'Save check-in'}</button></div>`;
   }
   async function saveQuickLog() {
     const L = ui.log;
@@ -876,44 +951,43 @@
       render();
     } catch (e) { L.saving = false; toast(e.message); renderSheet(); }
   }
-  const obSteps = () => ['meet', ...(ui.googleId ? ['account'] : []), 'name', ...(isStandalone() ? [] : ['install']), 'remind', 'plan'];
+  // Welcome: one promise, pick what's hardest, pick a check-in time, then straight into the chat.
+  const obSteps = () => ['hello', 'symptoms', 'time'];
   function welcomeHtml() {
     const steps = obSteps();
     const step = steps[Math.min(ui.ob, steps.length - 1)], last = ui.ob >= steps.length - 1;
     const canRemind = pushSupported() && (!isIOS() || isStandalone()) && Notification.permission !== 'denied';
+    if (!ui.obSyms) ui.obSyms = [...((user.community && user.community.focus) || [])];
     const body = {
-      meet: `<div class="ob-art"><div class="avatar big">c</div></div><h2 id="sheetTitle" class="ob-title">Meet Cura</h2>
-        <p class="ob-text">Text Cura how you feel, a symptom, or when your period starts, like texting a friend. She keeps track for you.</p>
-        <div class="ob-list"><div>💬 <span>Just chat, no forms to fill in</span></div><div>📊 <span>See patterns in your cycle and symptoms</span></div><div>👥 <span>Swap what helps with people like you</span></div><div>📋 <span>Walk into appointments with a clear agenda</span></div></div>
-        <p class="ob-hint">Prefer dark mode? Pick it here, or anytime in <b>Me → Appearance</b>.</p>${themeSeg()}`,
-      account: `<div class="ob-art">🔒</div><h2 id="sheetTitle" class="ob-title">Keep your Cura safe</h2>
-        <p class="ob-text">Sign in so your notes, chats and plan are saved to your account. Change phones or delete the app, and everything comes back when you sign in again.</p>
-        ${accountBlock()}
-        <p class="ob-hint">Already use Cura? Sign in to bring everything back. Or tap Next to do this later in <b>Me</b>.</p>`,
-      name: `<div class="ob-art">👋</div><h2 id="sheetTitle" class="ob-title">What should we call you?</h2>
-        <p class="ob-text">Cura will use your first name now and then. You can skip this or change it anytime in <b>Me</b>.</p>
-        <label class="sr-only" for="obName">Your first name</label>
-        <input class="input" id="obName" data-ob-name maxlength="60" autocomplete="given-name" enterkeyhint="next" placeholder="Your first name" value="${esc(ui.obName ?? user.profile.name)}" style="max-width:320px;margin:0 auto;display:block;text-align:center">`,
-      install: `<div class="ob-art">📲</div><h2 id="sheetTitle" class="ob-title">Keep Cura one tap away</h2>${installHelp()}`,
-      remind: `<div class="ob-art">🔔</div><h2 id="sheetTitle" class="ob-title">A gentle daily nudge</h2>
-        <p class="ob-text">Cura can remind you once a day to check in. It's skipped on days you've already logged something.</p>
-        ${canRemind ? (user.reminder && user.reminder.enabled ? '<p class="pill">Reminder is on ✓</p>' : `<button class="btn primary" data-action="ob-remind" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Remind me at 8 PM'}</button>`) : `<p class="card-sub">${isIOS() ? 'Once Cura is on your Home Screen, open it from there and turn this on in <b>Me</b>.' : 'You can turn this on later in <b>Me</b>.'}</p>`}`,
-      plan: `<div class="ob-art">🌿</div><h2 id="sheetTitle" class="ob-title">Ideas from people like you</h2>
-        <p class="ob-text">In <b>Community</b>, chat with a small group whose symptoms are like yours. Ideas you choose to try show up on Today each day, and on your calendar if you like.</p>
-        <div class="cal-btns" style="max-width:320px;margin:0 auto">${calButtons()}</div>
-        <p class="ob-hint">You can also do this later in <b>Me → Calendar</b>.</p>`
+      hello: `<div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
+        <h2 id="sheetTitle" class="ob-title">Perimenopause is a lot. Text it to Cura.</h2>
+        <p class="ob-text">Tell Cura how you feel in your own words. She keeps track, spots patterns and gets you ready for your doctor.</p>
+        <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, sorry. Saved at 7. That's 3 nights this week, want a quick tip?</div></div>
+        ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Signing in keeps your notes safe if you change phones. Already use Cura? Sign in to bring everything back.</p>` : ''}`,
+      symptoms: `<h2 id="sheetTitle" class="ob-title">What's been hardest lately?</h2>
+        <p class="ob-text">Pick up to 3. Cura will start there.</p>
+        <div class="chipset ob-chips">${COMMON_SYMPTOMS.map(n => `<button class="chip ${ui.obSyms.includes(n) ? 'on' : ''}" data-ob-sym="${esc(n)}" aria-pressed="${ui.obSyms.includes(n)}">${esc(n)}</button>`).join('')}</div>`,
+      time: `<h2 id="sheetTitle" class="ob-title">When should Cura check in?</h2>
+        <p class="ob-text">A gentle nudge once a day. It's skipped on days you've already checked in.</p>
+        <div class="ob-times">${[[8, '☀️', 'Morning', '8 AM'], [20, '🌙', 'Evening', '8 PM']].map(([h, e, l, t]) => `<button class="ob-time ${ui.obHour === h || (user.reminder && user.reminder.enabled && user.reminder.hour === h) ? 'on' : ''}" data-action="ob-time" data-hour="${h}" ${ui.reminderBusy ? 'disabled' : ''}><span aria-hidden="true">${e}</span><b>${l}</b><small>${t}</small></button>`).join('')}</div>
+        ${canRemind ? '' : `<p class="ob-hint">${isIOS() ? 'iPhone only allows reminders once Cura is on your Home Screen. Add it from Safari\'s Share menu, then turn this on in <b>Me</b>.' : 'This browser can\'t show reminders. You can still check in anytime.'}</p>`}
+        ${user.profile.name ? '' : `<label class="ob-name-label" for="obName">What should Cura call you? <span>(optional)</span></label>
+        <input class="input" id="obName" data-ob-name maxlength="60" autocomplete="given-name" enterkeyhint="done" placeholder="Your first name" value="${esc(ui.obName || '')}">`}`
     }[step];
-    if (step === 'plan') ensureCalUrl();
+    const next = step === 'hello' ? (user.account ? 'Next' : 'Try it first') : last ? 'Start chatting' : ui.obSyms.length ? 'Next' : 'Skip for now';
     return `<div class="ob">${body}</div>
       <div class="dots-row" aria-hidden="true">${steps.map((_, i) => `<i class="${i === ui.ob ? 'on' : ''}"></i>`).join('')}</div>
-      <div class="row"><button class="btn ghost" data-action="${ui.ob ? 'ob-back' : 'sheet-close'}">${ui.ob ? 'Back' : 'Skip'}</button><button class="btn primary" data-action="${last ? 'sheet-close' : 'ob-next'}">${last ? 'Start chatting' : 'Next'}</button></div>`;
+      <div class="row">${ui.ob ? '<button class="btn ghost" data-action="ob-back">Back</button>' : '<span></span>'}<button class="btn primary ob-next" data-action="${last ? 'sheet-close' : 'ob-next'}">${next}</button></div>`;
   }
-  // Saves the name typed in the welcome tour (once, when they move on).
+  // Saves the tour's answers once they finish (or close it): the name, and the symptoms as their starting focus.
   function saveObName() {
     const name = (ui.obName || '').trim();
-    if (obSteps()[ui.ob] !== 'name' || !name || name === user.profile.name) return;
-    user.profile.name = name; saveCache();
-    tool('save_profile', { name }).catch(() => {});
+    if (name && name !== user.profile.name) { user.profile.name = name; saveCache(); tool('save_profile', { name }).catch(() => {}); }
+    const picks = ui.obSyms || [];
+    if (picks.length && picks.join('|') !== ((user.community && user.community.focus) || []).join('|')) {
+      user.community = { ...user.community, focus: picks }; saveCache();
+      api('community-settings', { focus: picks }, { keepUser: true }).catch(() => {});
+    }
   }
   function renderSheet() {
     const root = $('#sheet');
@@ -996,6 +1070,10 @@
       try { await api('community-settings', { anonymous: capp.dataset.cmAppear === '1' }); toast('Saved'); await loadGroup(true); } catch (err) { toast(err.message); }
       renderSheet(); return;
     }
+    const os = e.target.closest('[data-ob-sym]');
+    if (os) { const n = os.dataset.obSym, F = ui.obSyms, i = F.indexOf(n); if (i >= 0) F.splice(i, 1); else if (F.length < 3) F.push(n); else toast('Pick up to 3 for now'); renderSheet(); return; }
+    const sb = e.target.closest('[data-log-sevbtn]');
+    if (sb && ui.log) { ui.log.sev = Number(sb.dataset.logSevbtn); renderSheet(); return; }
     if (ui.log && ui.sheet === 'log') {
       const mood = e.target.closest('[data-mood]'), sym = e.target.closest('[data-sym]'), ld = e.target.closest('[data-log-date]');
       if (mood) { ui.log.mood = ui.log.mood === mood.dataset.mood ? '' : mood.dataset.mood; renderSheet(); return; }
@@ -1013,12 +1091,17 @@
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
     else if (act === 'sheet-close') closeSheet();
     else if (act === 'log-save') saveQuickLog();
-    else if (act === 'ob-next') { saveObName(); ui.ob++; renderSheet(); }
+    else if (act === 'ob-next') { ui.ob++; renderSheet(); }
     else if (act === 'ob-back') { ui.ob = Math.max(0, ui.ob - 1); renderSheet(); }
-    else if (act === 'show-welcome') { ui.ob = 0; ui.sheet = 'welcome'; renderSheet(); }
-    else if (act === 'ob-remind') {
-      ui.reminderBusy = true; renderSheet();
-      try { await enableReminders(); toast('Reminder on: around 8 PM each day'); } catch (err) { toast(err.message); }
+    else if (act === 'show-welcome') { ui.ob = 0; ui.obSyms = null; ui.sheet = 'welcome'; renderSheet(); }
+    else if (act === 'ob-time') {
+      const hour = Number(a.dataset.hour); ui.obHour = hour;
+      const canRemind = pushSupported() && (!isIOS() || isStandalone()) && Notification.permission !== 'denied';
+      ui.reminderBusy = canRemind; renderSheet();
+      try {
+        if (canRemind) { await enableReminders(hour); toast(`Cura will check in around ${hourLabel(hour)} 💜`); }
+        else await api('reminder', { hour, tz: Intl.DateTimeFormat().resolvedOptions().timeZone }, { keepUser: true });
+      } catch (err) { toast(err.message); }
       ui.reminderBusy = false; renderSheet();
     }
     else if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; render(); }); }
@@ -1066,7 +1149,7 @@
     }
     else if (act === 'cm-leave') {
       if (!ui.cm.confirmLeave) { ui.cm.confirmLeave = true; renderSheet(); return; }
-      try { await api('community-leave'); ui.cm = freshCm(); ui.sheet = null; toast('You left the community. You can rejoin anytime.'); } catch (err) { toast(err.message); }
+      try { await api('community-leave'); ui.cm = freshCm(); ui.sheet = null; toast('You left the Circle. You can rejoin anytime.'); } catch (err) { toast(err.message); }
       render();
     }
     else if (act === 'cm-notice') { user.community.notice = null; render(); api('community-settings', { clearNotice: true }, { keepUser: true }).catch(() => {}); }
@@ -1085,7 +1168,7 @@
       render();
       api('tip-hide', { tipId: a.dataset.tip }).catch(err => toast(err.message));
     }
-    else if (act === 'idea-visit') guarded(() => tool('add_visit_note', { text: `Ask about: ${a.dataset.title} (for ${a.dataset.symptom}). Some people in the Cura community said it helped them.` }), 'Added to your list for your next visit');
+    else if (act === 'idea-visit') guarded(() => tool('add_visit_note', { text: `Ask about: ${a.dataset.title} (for ${a.dataset.symptom}). Some people in the Cura Circle said it helped them.` }), 'Added to your list for your next visit');
     else if (act === 'plan-done') {
       const p = user.plan.find(x => x.id === a.dataset.id);
       if (p) { p.done = p.done.includes(today()) ? p.done.filter(d => d !== today()) : [...p.done, today()]; render(); }
@@ -1155,7 +1238,7 @@
   });
   document.addEventListener('keydown', e => {
     if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
-    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); saveObName(); ui.ob++; renderSheet(); return; }
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); e.target.blur(); return; }
     if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
     if (e.target.id === 'groupInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#groupComposer').requestSubmit(); }
   });
@@ -1197,6 +1280,7 @@
       const d = await api('load');
       ui.unread = d.communityUnread || 0; updateBadge();
       ui.googleId = d.googleClientId || ''; loadGoogle();
+      ui.circleOpenAll = !!d.circleOpenAll;
       if (user.reminder && user.reminder.enabled) checkPushHere();
       // Bring over entries saved by the old browser-only version of the site.
       const old = store.get(OLD_KEY);

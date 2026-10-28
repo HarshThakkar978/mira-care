@@ -9,9 +9,9 @@ import { verifyGoogleToken } from './_lib/google.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 import {
   joinCommunity, updateCommunity, leaveCommunity, eraseUser, groupView, unreadCount, postMessage, extractTips,
-  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost
+  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings
 } from './_lib/community.js';
-import { ideasFor, addToPlan, recordOutcome, HOW_WELL } from './_lib/community-logic.js';
+import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess, circleInvite } from './_lib/community-logic.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Cura uses), so manual entries and chat entries stay in one place.
@@ -40,14 +40,15 @@ export async function POST(request) {
   try {
     if (action === 'load') {
       const user = await loadUser(key);
-      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '' });
+      const settings = await loadSettings().catch(() => ({}));
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen });
     }
 
     if (action === 'chat') {
       const text = String(body.text || '').trim().slice(0, 2000);
       if (!text) return json({ error: 'Empty message' }, 400);
       if (body.stream) return streamChat(key, text);
-      const { reply, user } = await miraReply(key, text, 'app', { context: (u, t) => chatContext(key, u, t) });
+      const { reply, user } = await miraReply(key, text, 'app', { context: (u, t) => chatContext(key, u, t), afterReply: async u => circleInvite(u, await loadSettings()) });
       return json({ reply, user: view(user) });
     }
 
@@ -149,6 +150,7 @@ export async function POST(request) {
     // ---------- Community ----------
     const since = typeof body.since === 'string' ? body.since : '';
     if (action === 'community-join') {
+      if (!circleAccess(user, await loadSettings())) return json({ error: 'Your Circle opens after 3 check-ins.' }, 403);
       const name = typeof body.name === 'string' ? body.name.trim().slice(0, 60) : '';
       if (name && body.anonymous !== true) user.profile.name = name;
       await joinCommunity(key, user, { focus: body.focus, anonymous: body.anonymous === true });
@@ -237,7 +239,7 @@ function streamChat(key, text) {
     async start(controller) {
       const send = obj => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'));
       try {
-        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }), context: (u, t) => chatContext(key, u, t) });
+        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }), context: (u, t) => chatContext(key, u, t), afterReply: async u => circleInvite(u, await loadSettings()) });
         send({ t: 'done', reply, user: view(user) });
       } catch (e) {
         console.error('chat stream error', e);

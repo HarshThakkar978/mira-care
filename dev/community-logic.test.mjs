@@ -1,6 +1,6 @@
 // Tests the community's pure logic and Cura's idea card (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/community-logic.test.mjs
-import { canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len } from '../api/_lib/community-logic.js';
+import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len } from '../api/_lib/community-logic.js';
 import { handleIncoming, freshUser, normalizeUser, mergeUsers } from '../api/_lib/mira.js';
 
 const log = (...a) => (globalThis.print || console.log)(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
@@ -89,6 +89,16 @@ const today = '2026-10-27';
   check(results[1].is_error === true, 'unknown idea id returns an error to Claude');
   check(seen[0].tools.some(t => t.name === 'suggest_idea'), 'idea tool offered in the app');
   check(seen[0].messages[0].content.includes('<community_ideas>') && seen[0].messages[0].content.includes('"Keep a fan by your bed" for night sweats (bedtime, day 3 of 7)'), 'context has community ideas and the plan');
+
+  // The Circle opens after 3 check-in days, or early when the team opens it
+  const fresh = normalizeUser(freshUser());
+  fresh.checkins = [{ date: '2026-10-25' }, { date: '2026-10-26' }];
+  check(!circleAccess(fresh, {}), 'closed with 2 check-in days');
+  check(circleAccess(fresh, { circleOpen: true }), 'open for everyone while testing');
+  check(circleAccess({ ...fresh, circleEarly: true }, {}), 'open early for one person');
+  fresh.symptoms = [{ date: '2026-10-27', name: 'x' }];
+  check(circleAccess(fresh, {}) && circleInvite(fresh, {}).cta.route === 'community', 'opens on the 3rd day with an invite');
+  check(circleInvite(fresh, {}) === null, 'invited only once');
 
   // Signing in on a phone that had its own notes
   const acct = normalizeUser({ profile: { name: 'Ana', appointmentDate: '', clinician: '' }, symptoms: [{ id: 's1', date: '2026-10-20', name: 'cramps' }], cycleStarts: [{ id: 'c1', date: '2026-10-01' }], transcript: [{ from: 'you', text: 'hi', at: '2026-10-20T10:00:00Z' }] });

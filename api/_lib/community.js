@@ -29,6 +29,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 export const loadGroups = async () => (await getValue(GROUPS)) || [];
 const saveGroups = groups => setValue(GROUPS, groups);
 export const loadTips = async () => (await getValue(TIPS)) || [];
+// Team switches, e.g. { circleOpen: true } while testing.
+export const loadSettings = async () => (await getValue('cura:settings')) || {};
+export async function saveSettings(patch) { const next = { ...(await loadSettings()), ...patch }; await setValue('cura:settings', next); return next; }
 const saveTips = tips => setValue(TIPS, tips);
 
 // One writer at a time for the shared group and tip records.

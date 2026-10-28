@@ -102,6 +102,7 @@
           <div class="card"><h2 class="card-title">Profile</h2><dl class="kv">
             <dt>Name</dt><dd>${esc(u.profile.name || '—')}</dd>
             <dt>Appointment</dt><dd>${esc(u.profile.appointmentDate || '—')}${u.profile.clinician ? ' · ' + esc(u.profile.clinician) : ''}</dd>
+            <dt>Circle</dt><dd>${s.inCircle ? 'In the Circle' : s.circleEarly ? 'Opened early by the team' : `${Math.min(s.checkinDays, 3)} of 3 check-ins`} <button class="btn small ghost" style="min-height:28px;padding:2px 8px;margin-left:6px" data-act="circle-early" data-id="${esc(id)}" data-on="${s.circleEarly ? '0' : '1'}">${s.circleEarly ? 'Undo early access' : 'Let them in now'}</button></dd>
             <dt>Reminder</dt><dd>${u.reminder.enabled ? `On, around ${hourLabel(u.reminder.hour)} (${esc(u.reminder.tz || 'default time zone')}) · ${u.reminder.devices} device(s)` : 'Off'}</dd></dl></div>
           <div class="card"><h2 class="card-title">Symptoms (${u.symptoms.length})</h2>${list(byDate(u.symptoms), x => `<div class="list-item"><span class="sev-badge s${x.severity ? Math.min(5, Math.ceil(x.severity / 2)) : ''}">${sev(x)}</span><div class="li-main"><div class="li-title">${esc(x.name)}</div><div class="li-meta">${esc(x.date)}${x.impact ? ' · ' + esc(x.impact) : ''}</div>${x.notes ? `<div class="li-note">${esc(x.notes)}</div>` : ''}</div></div>`, 'None logged.')}</div>
           <div class="card"><h2 class="card-title">Periods & check-ins</h2>
@@ -157,6 +158,8 @@
     const members = cm.groups.reduce((n, g) => n + g.members.length, 0);
     const tiles = [['Groups', cm.groups.length], ['Members', members], ['Tips to review', pending.length], ['Live tips', live.length]].map(([l, v]) => `<div class="card tile"><div class="l">${l}</div><div class="v">${v}</div></div>`).join('');
     $('#root').innerHTML = `${top(`${tabs('community')}<button class="btn small ghost" data-act="go-community">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>`)}
+      <div class="card row" style="margin-bottom:14px"><span class="small"><b>Circle for everyone</b> · ${cm.settings && cm.settings.circleOpen ? 'Open to everyone right now, for testing.' : 'Normal: the Circle opens after 3 check-ins. Turn this on to let your team in straight away.'}</span>
+        <button class="btn small ${cm.settings && cm.settings.circleOpen ? 'danger' : 'primary'}" data-act="circle-open" data-open="${cm.settings && cm.settings.circleOpen ? '0' : '1'}">${cm.settings && cm.settings.circleOpen ? 'Back to 3 check-ins' : 'Open to everyone'}</button></div>
       <div class="tiles" style="grid-template-columns:repeat(4,minmax(0,1fr))">${tiles}</div>
       <div class="detail-grid">
         <div>
@@ -213,6 +216,8 @@
     if (act === 'go-users') load();
     if (act === 'go-community') loadCommunity();
     if (act === 'group-msgs') openGroup(a.dataset.id);
+    if (act === 'circle-open') api('circle-open', { open: a.dataset.open === '1' }).then(loadCommunity).catch(err => alert(err.message));
+    if (act === 'circle-early') api('circle-early', { id: a.dataset.id, on: a.dataset.on === '1' }).then(() => openUser(a.dataset.id)).catch(err => alert(err.message));
     if (act === 'tip') {
       const id = a.dataset.id, fields = tipFieldsFrom(id); // read the edits before redrawing
       busy = id; renderCommunity();

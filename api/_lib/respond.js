@@ -46,6 +46,8 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
   const at = new Date().toISOString();
   user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}), ...(idea ? { idea } : {}) }].slice(-TRANSCRIPT_MAX);
   if (idea) user.offers = { ...user.offers, [idea.id]: today() }; // not offered again for two weeks
+  // Anything the app adds after Cura's reply (the Circle invitation).
+  if (hooks.afterReply) { const extra = await hooks.afterReply(user).catch(e => { console.error('after reply failed', e); return null; }); if (extra) user.transcript = [...user.transcript, extra].slice(-TRANSCRIPT_MAX); }
   await saveUser(key, user);
   return { reply, user };
 }

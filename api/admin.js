@@ -1,8 +1,9 @@
 // Backend for /admin.html: view every user and delete test or unwanted records. Protected by the ADMIN_PASSWORD setting in Vercel.
 import crypto from 'node:crypto';
 import { normalizeUser } from './_lib/mira.js';
-import { allUserIds, getUsers, storeConfigured } from './_lib/store.js';
-import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay } from './_lib/community.js';
+import { allUserIds, getUsers, getUser, saveUser, storeConfigured } from './_lib/store.js';
+import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings } from './_lib/community.js';
+import { checkinDays } from './_lib/community-logic.js';
 
 // Ids used by Claude's automated tests ("claude-…" device ids), so they can be cleaned out in one go.
 const isTestId = id => /^web-claude-/.test(id);
@@ -30,7 +31,7 @@ function summary(id, u) {
     messages: msgs.length, symptoms: u.symptoms.length, periods: u.cycleStarts.length, checkins: u.checkins.length,
     notes: u.preNotes.length + u.postNotes.length, reminder: u.reminder.enabled ? u.reminder.hour : null,
     lastMessage: msgs.length ? msgs[msgs.length - 1].text.slice(0, 120) : '',
-    test: isTestId(id)
+    test: isTestId(id), circleEarly: !!u.circleEarly, checkinDays: checkinDays(u), inCircle: !!(u.community && u.community.joined)
   };
 }
 
@@ -84,7 +85,16 @@ export async function POST(request) {
     return json({ deleted: ids.length });
   }
   // ---------- Community: tips to review, groups, messages ----------
-  if (body.action === 'community') return json(await adminCommunity());
+  if (body.action === 'community') return json({ ...(await adminCommunity()), settings: await loadSettings() });
+  if (body.action === 'circle-open') return json({ settings: await saveSettings({ circleOpen: body.open === true }) });
+  if (body.action === 'circle-early') {
+    // Lets one person into the Circle before their 3 check-ins (for team testing).
+    const id = String(body.id || ''), raw = await getUser(id);
+    if (!raw) return json({ error: 'User not found' }, 404);
+    raw.circleEarly = body.on === true;
+    await saveUser(id, raw);
+    return json({ circleEarly: raw.circleEarly });
+  }
   if (body.action === 'group-msgs') return json({ messages: await adminGroupMessages(String(body.groupId || '')) });
   if (body.action === 'msg-delete') return json({ deleted: await adminDeleteMessage(String(body.groupId || ''), String(body.msgId || '')) });
   if (body.action === 'tip-save') {

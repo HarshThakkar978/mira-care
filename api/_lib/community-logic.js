@@ -10,6 +10,18 @@ export const TIP_ANSWERS = ['Helped a lot', 'Helped a little', 'Not really'];
 export const ANSWER_HOW = { 'helped a lot': 'a_lot', 'helped a little': 'some', 'a little': 'some', 'not really': 'not_much' };
 export const ALIASES = ['Willow', 'Juniper', 'Sage', 'Fern', 'Maple', 'Hazel', 'Ivy', 'Rowan', 'Aspen', 'Clover', 'Birch', 'Wren', 'Linden', 'Laurel', 'Marigold', 'Poppy', 'Iris', 'Olive', 'Briar', 'Heather', 'Saffron', 'Yarrow', 'Sorrel', 'Tansy'];
 
+// The Circle opens once someone has checked in on 3 different days, so Cura knows what to match them on.
+// The team can open it early for one person (circleEarly) or for everyone while testing.
+export const CIRCLE_DAYS = 3;
+export const checkinDays = user => new Set([...(user.checkins || []), ...(user.symptoms || [])].map(x => x.date).filter(Boolean)).size;
+export const circleAccess = (user, settings = {}) => !!(user.community && user.community.joined) || !!settings.circleOpen || !!user.circleEarly || checkinDays(user) >= CIRCLE_DAYS;
+// Cura's one-time invitation in chat, the first time the Circle opens for them.
+export function circleInvite(user, settings) {
+  if (user.circleInvited || (user.community && user.community.joined) || !circleAccess(user, settings)) return null;
+  user.circleInvited = true;
+  return { from: 'mira', text: 'By the way, people with symptoms like yours are swapping tips in the Cura Circle. Want to take a peek? 💜', at: new Date().toISOString(), cta: { label: 'Peek at the Circle', route: 'community' } };
+}
+
 export const freshCommunity = () => ({ joined: false, anonymous: false, alias: '', focus: [], groupId: '', joinedAt: '', reason: '', notice: null, hidden: [] });
 
 export function addDays(date, n) {
