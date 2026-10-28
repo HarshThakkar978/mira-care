@@ -241,6 +241,12 @@ def admin(body):
             TIPS.append({"id": nid(), "status": "approved", "source": "team", "symptom": "night sweats", "title": line.strip()[:60], "details": "", "when": "bedtime", "kind": "everyday",
                          "why": "This may help you stay cooler at night.", "shared": 0, "tried": 0, "helped": 0, "howWell": "unclear", "quote": line})
         return {"added": 1}, 200
+    if a == "circle-fresh":
+        if body.get("confirm") != "FRESH START": return {"error": "Type FRESH START to confirm"}, 400
+        n = sum(1 for u in USERS.values() if u["community"]["joined"]); member_tips = [t for t in TIPS if t["source"] != "team"]
+        GMSGS.clear(); REACTS.clear(); TIPS[:] = [t for t in TIPS if t["source"] == "team"]
+        for u in USERS.values(): u["community"] = fresh()["community"]; u["plan"] = []
+        return {"result": {"groups": 1, "tipsRemoved": len(member_tips), "starterTipsKept": len(TIPS), "members": n}}, 200
     if a == "regroup": return {"result": {"changed": False, "members": 4}}, 200
     if a == "questions": return {"posted": 0}, 200
     return {"error": "unknown"}, 400

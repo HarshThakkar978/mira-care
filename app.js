@@ -46,6 +46,7 @@
   const fmt = (s, opts = { month: 'short', day: 'numeric' }) => (s ? parse(s).toLocaleDateString(undefined, opts) : '');
   const fmtLong = s => fmt(s, { weekday: 'short', month: 'short', day: 'numeric' });
   const sevClass = v => (v ? 's' + Math.min(5, Math.ceil(Number(v) / 2)) : '');
+  const avgText = (sum, n) => `${Number((sum / n).toFixed(1))}/10`;
   const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
   const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -102,7 +103,7 @@
     view.innerHTML = { chat: renderChat, today: renderToday, community: renderCommunity, cycle: renderCycle, visit: renderVisit, me: renderMe, report: renderReport }[route]();
     if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
     if (route === 'community') scrollThread();
-    document.querySelectorAll('textarea.ag-text').forEach(autoGrow);
+    document.querySelectorAll('textarea.ag-text, textarea[data-edit]').forEach(autoGrow);
     if (route === 'today') maybeLoadInsight();
     renderSheet();
     syncPoll(); updateBadge(); renderGoogleButtons();
@@ -229,7 +230,7 @@
       if (t) { t.innerHTML = threadHtml(); t.scrollTop = t.scrollHeight - before; } // keep your place
     } catch (e) { ui.loadingOlder = false; toast(e.message); refreshThread(); }
   }
-  function autoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, el.classList.contains('ag-text') ? 400 : 140) + 'px'; }
+  function autoGrow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, el.classList.contains('ag-text') || el.dataset.edit ? 400 : 140) + 'px'; }
 
   // Sends a message and shows Cura's reply word by word as it streams in.
   async function sendMessage(text) {
@@ -302,7 +303,7 @@
       <div class="card week-card">
         <div class="row"><h2 class="card-title">This week</h2>${showedUp ? `<span class="pill peach">${plural(showedUp, 'check-in')} 🌟</span>` : `<button class="btn small soft" data-action="quick-log">Check in</button>`}</div>
         <div class="week" role="list">${days.map(x => `<div class="wday" role="listitem" aria-label="${esc(x.label)}"><span class="${x.today ? 'now' : ''}">${x.letter}</span><i class="${x.cls}${x.today ? ' today' : ''}"></i></div>`).join('')}</div>
-        <p class="small muted" style="margin:0">Darker = stronger symptoms · rose = period started</p>
+        <p class="small muted" style="margin:0">Deeper color = stronger symptoms · rose = period started</p>
       </div>
       ${planCard()}
       ${insightCard()}
@@ -331,7 +332,7 @@
         <div class="row small muted"><span>${fmt(addDays(today(), -29))}</span><span>Today</span></div>
       </div>
       <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
-        ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(t.name)}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + (t.sevSum / t.sevN).toFixed(1) + '/10' : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
+        ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(cap(t.name))}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + avgText(t.sevSum, t.sevN) : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
       </div>`;
   }
   function insightCard() {
@@ -355,7 +356,7 @@
   }
   function recentList() {
     const items = [
-      ...user.symptoms.map(s => ({ date: s.date, title: s.name, meta: [s.severity ? s.severity + '/10' : '', s.impact].filter(Boolean).join(' · '), icon: '🌡️' })),
+      ...user.symptoms.map(s => ({ date: s.date, title: cap(s.name), meta: [s.severity ? s.severity + '/10' : '', s.impact].filter(Boolean).join(' · '), icon: '🌡️' })),
       ...user.cycleStarts.map(c => ({ date: c.date, title: 'Period started', meta: '', icon: '🩸' })),
       ...user.checkins.map(c => ({ date: c.date, title: c.feeling, meta: 'Check-in', icon: '💭' })),
       ...user.preNotes.map(n => ({ date: n.date, title: n.text, meta: 'For your next visit', icon: '📝' }))
@@ -402,7 +403,7 @@
     </div>`;
   }
   function symItem(s) {
-    return `<div class="list-item"><span class="sev-badge ${sevClass(s.severity)}">${s.severity ? s.severity + '/10' : '—'}</span><div class="li-main"><div class="li-title">${esc(s.name)}</div>${s.impact ? `<div class="li-meta">${esc(s.impact)}</div>` : ''}${s.notes ? `<div class="li-note">${esc(s.notes)}</div>` : ''}</div><button class="icon-btn" data-action="del" data-kind="symptom" data-id="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">×</button></div>`;
+    return `<div class="list-item"><span class="sev-badge ${sevClass(s.severity)}">${s.severity ? s.severity + '/10' : '—'}</span><div class="li-main"><div class="li-title">${esc(cap(s.name))}</div>${s.impact ? `<div class="li-meta">${esc(s.impact)}</div>` : ''}${s.notes ? `<div class="li-note">${esc(s.notes)}</div>` : ''}</div><button class="icon-btn" data-action="del" data-kind="symptom" data-id="${esc(s.id)}" aria-label="Delete ${esc(s.name)}">×</button></div>`;
   }
   function symptomForm(date) {
     return `<form data-form="symptom" class="form-grid" style="margin-top:12px">
@@ -800,7 +801,7 @@
   function ideasHtml() {
     const plan = activePlan();
     const top = `<div class="card plan-mini"><div class="row"><div><h2 class="card-title">🌿 Your plan</h2><p class="card-sub" style="margin:0">${plan.length ? `${plural(plan.length, 'idea')} you're trying. Tick ${plan.length === 1 ? 'it' : 'them'} off on Today.` : 'Add an idea below and it shows up on Today each day.'}</p></div>${plan.length ? '<button class="btn small ghost" data-route="today">Open</button>' : ''}</div>
-      <div class="row-wrap" style="margin-top:10px"><button class="btn small ghost" data-action="cal-open">📅 Put my plan on my calendar</button></div></div>`;
+      ${plan.length ? '<div class="row-wrap" style="margin-top:10px"><button class="btn small ghost" data-action="cal-open">📅 Put my plan on my calendar</button></div>' : ''}</div>`;
     if (ui.cm.ideas === null) return top + '<div class="card"><div class="skel" style="width:60%"></div><div class="skel" style="width:90%"></div><div class="skel" style="width:75%"></div></div>';
     const list = ui.cm.ideas, mine = list.filter(i => i.match), more = list.filter(i => !i.match);
     if (!list.length) return top + `<div class="empty" style="margin-top:14px"><strong>No ideas yet</strong>As people share what's helped, the Cura team checks the tips and they show up here.</div>`;
@@ -1106,10 +1107,11 @@
     const open = !!ui.sheet;
     document.body.classList.toggle('sheet-open', open);
     if (!open) { root.innerHTML = ''; return; }
-    const wasOpen = !!root.querySelector('.sheet');
+    const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
       <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml }[ui.sheet]()}</div>`;
-    if (!wasOpen) root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
+    if (wasOpen) root.querySelector('.sheet').scrollTop = top; // a redraw keeps your place in the sheet
+    else root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
   }
 
@@ -1129,10 +1131,10 @@
         <h1 class="title" style="font-size:26px">Symptom & cycle summary${p.name ? ' · ' + esc(p.name) : ''}</h1>
         <p class="sub">${fmt(from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })} · made ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })}${p.appointmentDate ? ` · for the appointment on ${fmtLong(p.appointmentDate)}${p.clinician ? ' with ' + esc(p.clinician) : ''}` : ''}</p></div>
       ${user.agenda.summary ? `<section class="rsec"><h2>In my words</h2><p>${esc(user.agenda.summary)}</p></section>` : ''}
-      <section class="rsec"><h2>Symptoms at a glance</h2>${table(['Symptom', 'Days noticed', 'Average', 'Strongest'], top.map(t => [esc(t.name), t.days.size, t.sevN ? (t.sevSum / t.sevN).toFixed(1) + '/10' : '—', maxSev(t.name) ? maxSev(t.name) + '/10' : '—']), 'No symptoms logged in this period.')}</section>
+      <section class="rsec"><h2>Symptoms at a glance</h2>${table(['Symptom', 'Days noticed', 'Average', 'Strongest'], top.map(t => [esc(cap(t.name)), t.days.size, t.sevN ? avgText(t.sevSum, t.sevN) : '—', maxSev(t.name) ? maxSev(t.name) + '/10' : '—']), 'No symptoms logged in this period.')}</section>
       <section class="rsec"><h2>Periods</h2>${table(['Started', 'Days since previous'], [...starts].reverse().slice(0, 12).map((c, i, arr) => [fmtLong(c.date), arr[i + 1] ? diffDays(arr[i + 1].date, c.date) : '—']), 'No period starts logged.')}</section>
       ${raise.length ? `<section class="rsec"><h2>What I want to discuss</h2><ul>${raise.slice(0, 12).map(r => `<li>${esc(r)}</li>`).join('')}</ul></section>` : ''}
-      <section class="rsec"><h2>Symptom log</h2>${table(['Date', 'Symptom', 'Intensity', 'Notes'], syms.slice(0, 60).map(s => [fmt(s.date), esc(s.name), s.severity ? s.severity + '/10' : '—', esc([s.impact, s.notes].filter(Boolean).join('; '))]), 'Nothing logged yet.')}</section>
+      <section class="rsec"><h2>Symptom log</h2>${table(['Date', 'Symptom', 'Intensity', 'Notes'], syms.slice(0, 60).map(s => [fmt(s.date), esc(cap(s.name)), s.severity ? s.severity + '/10' : '—', esc([s.impact, s.notes].filter(Boolean).join('; '))]), 'Nothing logged yet.')}</section>
       ${checks.length ? `<section class="rsec"><h2>How I've been feeling</h2>${table(['Date', 'Check-in'], checks.slice(0, 20).map(c => [fmt(c.date), esc(c.feeling)]), '')}</section>` : ''}
       <p class="note">Recorded by the patient with Cura, a personal tracking app. Not a medical record or diagnosis.</p>
     </div>`;
@@ -1359,7 +1361,7 @@
     if (el.dataset.edit) {
       const [field, key] = el.dataset.edit.split('.');
       if (el.dataset.index !== undefined) user[field][key][Number(el.dataset.index)] = el.value; else user[field][key] = el.value;
-      if (el.classList.contains('ag-text')) autoGrow(el);
+      if (el.tagName === 'TEXTAREA') autoGrow(el);
       saveCache(); patchSoon(field);
     }
   });
@@ -1390,11 +1392,21 @@
       document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
       window.scrollTo(0, 0); scrollThread();
     } else document.documentElement.style.removeProperty('--app-h');
+    // A sheet with a field in focus is sized to the visible area, so the keyboard never covers it.
+    const sh = $('#sheet'), fit = document.body.classList.contains('field-open') && ui.sheet;
+    if (sh) { sh.style.top = fit ? `${Math.round(vv.offsetTop)}px` : ''; sh.style.height = fit ? `${Math.round(vv.height)}px` : ''; sh.style.bottom = fit ? 'auto' : ''; }
   }
   if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
   const isTyping = el => el && (el.id === 'msgInput' || el.id === 'groupInput');
-  document.addEventListener('focusin', e => { if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); } });
+  const isField = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select');
+  document.addEventListener('focusin', e => {
+    if (isField(e.target)) document.body.classList.add('field-open');
+    if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); }
+    else if (isField(e.target) && e.target.closest('#sheet')) { setTimeout(fitViewport, 50); setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350); }
+  });
   document.addEventListener('focusout', e => {
+    // Wait a moment, so a tap on a button below the field lands before the layout changes back.
+    if (isField(e.target)) setTimeout(() => { if (!isField(document.activeElement)) { document.body.classList.remove('field-open'); fitViewport(); } }, 150);
     if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); scrollThread(); } }, 80);
     // iPhone sometimes leaves the page nudged up after typing in a form field; put it back.
     else if (e.target.matches && e.target.matches('input, textarea, select')) setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, textarea, select')) window.scrollTo(0, 0); }, 120);

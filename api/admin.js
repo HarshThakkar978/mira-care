@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { normalizeUser } from './_lib/mira.js';
 import { allUserIds, getUsers, getUser, saveUser, storeConfigured } from './_lib/store.js';
-import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings } from './_lib/community.js';
+import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings, freshStartCircle } from './_lib/community.js';
 import { checkinDays } from './_lib/community-logic.js';
 
 // Ids used by Claude's automated tests ("claude-…" device ids), so they can be cleaned out in one go.
@@ -106,6 +106,10 @@ export async function POST(request) {
     if (!text) return json({ error: 'Write a tip first' }, 400);
     const tips = await addTeamTips(text);
     return tips.length ? json({ added: tips.length }) : json({ error: "Cura couldn't find a tip in that text. Try one tip per line, e.g. \"A cool shower before bed for night sweats\"." }, 400);
+  }
+  if (body.action === 'circle-fresh') {
+    if (body.confirm !== 'FRESH START') return json({ error: 'Type FRESH START to confirm' }, 400);
+    return json({ result: await freshStartCircle() });
   }
   if (body.action === 'regroup') return json({ result: await regroup({ force: true }) });
   if (body.action === 'questions') return json({ posted: await questionsOfTheDay() });

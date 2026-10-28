@@ -160,6 +160,8 @@
     $('#root').innerHTML = `${top(`${tabs('community')}<button class="btn small ghost" data-act="go-community">Refresh</button><button class="btn small ghost" data-act="logout">Log out</button>`)}
       <div class="card row" style="margin-bottom:14px"><span class="small"><b>Circle for everyone</b> · ${cm.settings && cm.settings.circleOpen ? 'Open to everyone right now, for testing.' : 'Normal: the Circle opens after 3 check-ins. Turn this on to let your team in straight away.'}</span>
         <button class="btn small ${cm.settings && cm.settings.circleOpen ? 'danger' : 'primary'}" data-act="circle-open" data-open="${cm.settings && cm.settings.circleOpen ? '0' : '1'}">${cm.settings && cm.settings.circleOpen ? 'Back to 3 check-ins' : 'Open to everyone'}</button></div>
+      <div class="card row" style="margin-bottom:14px"><span class="small"><b>Fresh start</b> · Clears every group, message, reaction and member tip, and takes everyone out of the Circle so real users start clean. Starter tips stay. People's own logs and chats aren't touched.</span>
+        <button class="btn small danger" data-act="circle-fresh" ${busy === 'fresh' ? 'disabled' : ''}>${busy === 'fresh' ? 'Clearing…' : 'Start the Circle fresh'}</button></div>
       <div class="tiles" style="grid-template-columns:repeat(4,minmax(0,1fr))">${tiles}</div>
       <div class="detail-grid">
         <div>
@@ -217,6 +219,11 @@
     if (act === 'go-community') loadCommunity();
     if (act === 'group-msgs') openGroup(a.dataset.id);
     if (act === 'circle-open') api('circle-open', { open: a.dataset.open === '1' }).then(loadCommunity).catch(err => alert(err.message));
+    if (act === 'circle-fresh') {
+      if (prompt('This deletes every group chat, reaction and member tip, and takes everyone out of the Circle. It can\'t be undone.\n\nType FRESH START to go ahead.') !== 'FRESH START') return;
+      busy = 'fresh'; renderCommunity();
+      api('circle-fresh', { confirm: 'FRESH START' }).then(r => { busy = ''; const x = r.result; alert(`Done. Removed ${x.groups} group(s) and ${x.tipsRemoved} member tip(s), kept ${x.starterTipsKept} starter tip(s), and took ${x.members} member(s) out of the Circle.`); loadCommunity(); }).catch(err => { busy = ''; renderCommunity(); alert(err.message); });
+    }
     if (act === 'circle-early') api('circle-early', { id: a.dataset.id, on: a.dataset.on === '1' }).then(() => openUser(a.dataset.id)).catch(err => alert(err.message));
     if (act === 'tip') {
       const id = a.dataset.id, fields = tipFieldsFrom(id); // read the edits before redrawing

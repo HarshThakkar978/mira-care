@@ -6,7 +6,7 @@
 // cura:tips (all tips), cura:read:<user> (last message they saw), cura:cal:<token> (calendar link → user).
 // Group members and message authors are stored by user key, which never leaves the server.
 import Anthropic from '@anthropic-ai/sdk';
-import { rcmd, getValue, setValue, getUsers, deleteUser, deleteAccount } from './store.js';
+import { rcmd, getValue, setValue, getUsers, saveUser, allUserIds, deleteUser, deleteAccount } from './store.js';
 import { MODEL, loadUser, storeUser, today } from './respond.js';
 import { normalizeUser } from './mira.js';
 import {
@@ -245,6 +245,36 @@ export async function eraseUser(key) {
   await leaveCommunity(key, user, { purge: true });
   if (user.account && user.account.sub) await deleteAccount(user.account.sub);
   await deleteUser(key);
+}
+
+// A clean Circle for launch: every group, message, reaction and member-shared tip goes, and everyone is
+// out of the Circle (they can join again; Cura regroups them from what they log). Starter tips from the
+// team stay, with their counts reset. People's own logs, chats and reminders aren't touched.
+export async function freshStartCircle() {
+  let groups = [];
+  await withLock('groups', async () => { groups = await loadGroups(); await saveGroups([]); });
+  for (const g of groups) await rcmd(['DEL', msgsKey(g.id), reactKey(g.id)]);
+  const removed = new Set();
+  let kept = 0;
+  await withLock('tips', async () => {
+    const tips = await loadTips(), keep = tips.filter(t => t.source === 'team');
+    tips.forEach(t => { if (t.source !== 'team') removed.add(t.id); });
+    for (const t of keep) { t.reports = []; t.outcomes = []; t.added = 0; t.adds = []; }
+    kept = keep.length;
+    await saveTips(keep);
+  });
+  let members = 0;
+  for (const [key, raw] of await getUsers(await allUserIds())) {
+    const user = normalizeUser(raw);
+    if (user.community.joined) members++;
+    user.community = freshCommunity();
+    user.circleInvited = false; // so Cura invites them again once it's open for them
+    user.offers = {};
+    user.plan = (user.plan || []).filter(p => !removed.has(p.tipId));
+    await rcmd(['DEL', readKey(key)]);
+    await saveUser(key, user);
+  }
+  return { groups: groups.length, tipsRemoved: removed.size, starterTipsKept: kept, members };
 }
 
 // ---------- Tips Claude finds in the group chat ----------

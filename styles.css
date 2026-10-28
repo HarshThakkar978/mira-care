@@ -319,7 +319,10 @@ body.sheet-open{overflow:hidden}
   body.kb-open .chat-head .avatar{width:30px;height:30px;font-size:18px}
   body.kb-open .chat-status{display:none}
   body.kb-open .composer{padding-bottom:8px}
+  body.field-open .nav{display:none}
+  body.field-open .app{grid-template-rows:minmax(0,1fr) 0}
 }
+body.field-open .sheet{max-height:calc(100% - 10px)}
 
 /* ---------- Community ---------- */
 .nav-item{position:relative}
@@ -370,7 +373,7 @@ a.btn.primary{color:#fff}
 @media (prefers-color-scheme:dark){:root[data-theme="system"] a.btn.primary{color:#1B1030}}
 @media (max-width:760px){body.kb-open .cm-tabs,body.kb-open .notice{display:none}}
 .group-head .chat-status{max-width:80%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.g-btn{display:flex;justify-content:center;min-height:44px;margin:4px auto}
+.g-btn{color-scheme:light;display:flex;justify-content:center;min-height:44px;margin:4px auto}
 
 /* ---------- Dusk lavender redesign ---------- */
 h1,h2,h3,.card-title,.chat-name{font-family:'Bricolage Grotesque',-apple-system,sans-serif}
@@ -500,3 +503,10 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 .chat-head.group-head{flex-direction:column;align-items:center;gap:3px;padding-top:calc(10px + var(--safe-t))}
 .group-head .chat-name{justify-content:center}
 .community .msg.them:not(.cura){background:var(--surface);border:1px solid var(--line)}
+
+/* ---------- Polish for early users ---------- */
+/* The quick check-in's Save button stays in reach on short screens. */
+.sheet .ci-foot{position:sticky;bottom:calc(-22px - var(--safe-b));background:var(--surface);margin:8px -20px calc(-22px - var(--safe-b));padding:10px 20px calc(14px + var(--safe-b));border-top:1px solid var(--line)}
+/* Readable numbers on the brightest intensity colors in dark mode. */
+:root[data-theme="dark"] .qr-num.s4,:root[data-theme="dark"] .qr-num.s5,:root[data-theme="dark"] .sev-badge.s4{color:#1B1030}
+@media (prefers-color-scheme:dark){:root[data-theme="system"] .qr-num.s4,:root[data-theme="system"] .qr-num.s5,:root[data-theme="system"] .sev-badge.s4{color:#1B1030}}
