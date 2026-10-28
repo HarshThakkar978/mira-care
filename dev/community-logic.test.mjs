@@ -2,6 +2,7 @@
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/community-logic.test.mjs
 import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len } from '../api/_lib/community-logic.js';
 import { handleIncoming, freshUser, normalizeUser, mergeUsers } from '../api/_lib/mira.js';
+import { visitNudge, recapData, tipNews, recapText } from '../api/_lib/nudges.js';
 
 const log = (...a) => (globalThis.print || console.log)(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
 let fail = 0;
@@ -99,6 +100,22 @@ const today = '2026-10-27';
   fresh.symptoms = [{ date: '2026-10-27', name: 'x' }];
   check(circleAccess(fresh, {}) && circleInvite(fresh, {}).cta.route === 'community', 'opens on the 3rd day with an invite');
   check(circleInvite(fresh, {}) === null, 'invited only once');
+
+  // Cura's own messages around a visit, and the Sunday recap
+  const v = normalizeUser({ profile: { name: 'A', appointmentDate: '2026-11-03', clinician: 'Dr. Lee' } });
+  const n1 = visitNudge(v, '2026-10-27');
+  check(n1 && n1.cta.action === 'draft-agenda' && n1.text.includes('a week away') && n1.text.includes('Dr. Lee'), 'a week before: agenda nudge');
+  check(visitNudge(v, '2026-10-28') === null, 'agenda nudge only once');
+  check(visitNudge(v, '2026-11-02').cta.route === 'report', 'day before: summary');
+  const after = visitNudge(v, '2026-11-04');
+  check(after && after.ui.options.length === 3 && after.note.includes('add_after_visit_note'), 'day after: how did it go, with a note for Cura');
+  check(visitNudge(v, '2026-11-20') === null, 'nothing long after');
+  check(recapData(normalizeUser({ checkins: [{ date: '2026-10-25', feeling: 'ok' }] }), '2026-10-25') === null, 'no recap with one day of entries');
+  const rd = recapData(normalizeUser({ checkins: [{ date: '2026-10-21', feeling: 'ok' }], symptoms: [{ date: '2026-10-24', name: 'night sweats', severity: 7 }] }), '2026-10-25');
+  check(rd && rd.days_checked_in === 2 && rd.symptoms[0].severity === 7, 'recap data from the last 7 days');
+  const news = tipNews('me', [{ author: 'me', status: 'approved', title: 'Fan by the bed', adds: [{ key: 'a', at: '2026-10-24T10:00:00Z' }, { key: 'b', at: '2026-10-25T10:00:00Z' }, { key: 'a', at: '2026-10-25T11:00:00Z' }, { key: 'c', at: '2026-10-01T10:00:00Z' }] }], '2026-10-25');
+  check(news.startsWith('2 people in the Circle added your tip "Fan by the bed"'), 'tip news counts people this week');
+  check(recapText({ most_common: 'x', best_day: 'y', noticed: 'z' }, news).split('\n').length === 6, 'recap text has 3 lines plus tip news');
 
   // Signing in on a phone that had its own notes
   const acct = normalizeUser({ profile: { name: 'Ana', appointmentDate: '', clinician: '' }, symptoms: [{ id: 's1', date: '2026-10-20', name: 'cramps' }], cycleStarts: [{ id: 'c1', date: '2026-10-01' }], transcript: [{ from: 'you', text: 'hi', at: '2026-10-20T10:00:00Z' }] });

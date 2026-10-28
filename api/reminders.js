@@ -4,6 +4,7 @@
 // Once a day (the 14:00 UTC run, 10 AM in New York) it also does the community's daily jobs.
 import { loadUser, storeUser } from './_lib/respond.js';
 import { communityDaily } from './_lib/community.js';
+import { userDaily } from './_lib/daily.js';
 import { reminderUsers, removeReminderUser } from './_lib/store.js';
 import { localNow, reminderMessage, sendToUser } from './_lib/push.js';
 
@@ -12,6 +13,8 @@ const COMMUNITY_HOUR_UTC = 14;
 export async function GET(request) {
   const h = Number(new URL(request.url).searchParams.get('h'));
   const community = h === COMMUNITY_HOUR_UTC ? await communityDaily().catch(e => { console.error('community daily failed', e); return { error: true }; }) : undefined;
+  // Cura's own messages (visit nudges, Sunday recap) go in before reminders, so the reminder can mention them.
+  const messages = h === COMMUNITY_HOUR_UTC ? await userDaily().catch(e => { console.error('user daily failed', e); return { error: true }; }) : undefined;
   const keys = await reminderUsers();
   let sent = 0, skipped = 0;
   for (const key of keys) {
@@ -28,5 +31,5 @@ export async function GET(request) {
       await storeUser(key, user);
     } catch (e) { console.error('reminder failed', key, e); }
   }
-  return Response.json({ checked: keys.length, sent, skipped, ...(community ? { community } : {}) });
+  return Response.json({ checked: keys.length, sent, skipped, ...(community ? { community } : {}), ...(messages ? { messages } : {}) });
 }

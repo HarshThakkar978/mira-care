@@ -1,6 +1,6 @@
 (() => {
   // ---------- Storage & identity ----------
-  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded', THEME_KEY = 'mira-theme', ACCT_KEY = 'mira-account-prompt';
+  const ID_KEY = 'mira-device-id', CACHE_KEY = 'mira-cache-v3', OLD_KEY = 'mira-care-local-v2', TIP_KEY = 'mira-install-tip', OB_KEY = 'mira-onboarded', THEME_KEY = 'mira-theme', ACCT_KEY = 'mira-account-prompt', TIPS_KEY = 'mira-tips-seen', INSTALL_KEY = 'mira-install-asked';
   const store = {
     get(k) { try { return localStorage.getItem(k); } catch { return null; } },
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
@@ -83,7 +83,7 @@
   const ROUTES = ['chat', 'today', 'community', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
   const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, pushHere: 'unknown', pushEndpoint: '', googleId: '', signingIn: false, confirmSignOut: false };
-  function freshCm() { return { tab: 'group', group: null, messages: [], loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
+  function freshCm() { return { tab: 'group', group: null, messages: [], reactions: {}, reactFor: '', loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
   function go(to) {
@@ -106,6 +106,8 @@
     if (route === 'today') maybeLoadInsight();
     renderSheet();
     syncPoll(); updateBadge(); renderGoogleButtons();
+    if (coach && coach.screen !== route) { coach = null; drawCoach(); }
+    maybeTips();
     if (route === 'community' && joined()) {
       if (!ui.cm.loaded) loadGroup(true);
       if (ui.cm.tab === 'ideas' && ui.cm.ideas === null) loadIdeas();
@@ -155,7 +157,9 @@
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
       if (m.idea) html += ideaCardHtml(m.idea, true);
-      if (m.cta && !(m.cta.route === 'community' && joined())) html += `<button class="msg-cta" data-route="${esc(m.cta.route)}">${esc(m.cta.label)} ›</button>`;
+      if (m.cta && !(m.cta.route === 'community' && joined())) html += m.cta.action
+        ? `<button class="msg-cta" data-cta-action="${esc(m.cta.action)}">${esc(m.cta.label)} ›</button>`
+        : `<button class="msg-cta" data-route="${esc(m.cta.route)}">${esc(m.cta.label)} ›</button>`;
     });
     ui.seen = msgs.length;
     if (ui.pending) html += `<div class="msg me tail pop">${fmtMsg(ui.pending)}</div>` + (ui.live
@@ -193,7 +197,7 @@
   }
   function renderChat() {
     const tip = isIOS() && !isStandalone() && !store.get(TIP_KEY)
-      ? `<div class="install no-print"><span>📲</span><span><b>Keep Cura on your Home Screen.</b> Tap the Share button, then <b>Add to Home Screen</b>.</span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
+      ? `<div class="install no-print"><span>📲</span><span><b>Keep Cura on your Home Screen.</b> <button class="linkish" data-action="install-open">Show me how</button></span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
     return `<section class="chat">
       <header class="chat-head"><div class="avatar">c</div><div class="ch-main"><div class="chat-name">Cura</div><div class="chat-status">Here for you, day or night</div></div>
         <button class="head-plus no-print" type="button" data-action="quick-log" aria-label="Quick check-in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
@@ -492,7 +496,7 @@
         <div class="row-wrap"><button class="btn ghost" data-action="export">Download my data</button>
         <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
       <div class="card"><h2 class="card-title">📋 Visits</h2><p class="card-sub">Notes to bring up, your agenda, after-visit notes, and a one-page summary of the last 90 days to print or save as a PDF.</p><div class="row-wrap"><button class="btn ghost" data-route="visit">Open visits</button><button class="btn ghost" data-route="report">Doctor summary</button><button class="btn ghost" data-route="cycle">Cycle calendar</button></div></div>
-      <button class="btn ghost" data-action="show-welcome" style="width:100%;margin-top:14px">Show the welcome tour again</button>
+      <div class="row-wrap" style="margin-top:14px"><button class="btn ghost" data-action="tips-again" style="flex:1">Show app tips again</button><button class="btn ghost" data-action="show-welcome" style="flex:1">Welcome tour</button></div>
       <p class="note">Cura is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
     </div>`;
   }
@@ -555,10 +559,30 @@
   // ---------- Install help ----------
   let installPrompt = null; // Chrome/Android offer their own install dialog; we keep it for an "Install" button
   window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); installPrompt = e; if (route === 'me') render(); });
+  // iPhone has no way for a website to open "Add to Home Screen" itself, so we point at the exact button.
+  // Android and desktop Chrome give us their own one-tap install dialog (installPrompt).
+  const SHARE_ICON = '<svg class="share-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3M7.5 7.5 12 3l4.5 4.5M7 11H5.5A1.5 1.5 0 0 0 4 12.5v7A1.5 1.5 0 0 0 5.5 21h13a1.5 1.5 0 0 0 1.5-1.5v-7a1.5 1.5 0 0 0-1.5-1.5H17"/></svg>';
+  function installSteps() {
+    const ua = navigator.userAgent, v = Number((ua.match(/Version\/(\d+)/) || [])[1] || 0);
+    if (/FBAN|FBAV|Instagram|Line\/|GSA\//.test(ua)) return { where: 'none', steps: ['Tap <b>•••</b> or the compass button and choose <b>Open in Safari</b>.', 'Then come back to this screen in Safari.'] };
+    if (/CriOS/.test(ua)) return { where: 'top', steps: [`Tap the <b>Share</b> button ${SHARE_ICON} at the top right.`, 'Tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b>.'] };
+    if (v >= 26) return { where: 'right', steps: ['Tap <b>•••</b> at the bottom right.', `Tap <b>Share</b> ${SHARE_ICON}`, 'Tap <b>Add to Home Screen</b> (scroll down if you need to), then <b>Add</b>.'] };
+    return { where: 'center', steps: [`Tap the <b>Share</b> button ${SHARE_ICON} at the bottom.`, 'Scroll down and tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b> at the top right.'] };
+  }
   function installHelp() {
     if (installPrompt) return `<p class="card-sub">Install Cura so it opens straight into the chat, like an app.</p><button class="btn primary" data-action="install">Install Cura</button>`;
-    if (isIOS()) return `<p class="card-sub" style="margin:0">Open this site in <b>Safari</b>, tap <b>Share</b> <span aria-hidden="true">(□↑)</span>, scroll down and tap <b>Add to Home Screen</b>. Cura then opens straight into the chat, like an app.</p>`;
-    return `<p class="card-sub" style="margin:0">On Android, open the browser menu <b>⋮</b> and tap <b>Install app</b> or <b>Add to Home screen</b>. On a computer, look for the install icon in the address bar.</p>`;
+    if (isIOS()) { const g = installSteps(); return `<ol class="install-steps">${g.steps.map(x => `<li><span>${x}</span></li>`).join('')}</ol>`; }
+    return `<p class="card-sub" style="margin:0">Open the browser menu <b>⋮</b> and tap <b>Install app</b> or <b>Add to Home screen</b>. On a computer, look for the install icon in the address bar.</p>`;
+  }
+  const wantsInstall = () => !isStandalone() && (isIOS() || !!installPrompt) && !store.get(INSTALL_KEY);
+  function installSheetHtml() {
+    const g = isIOS() && !installPrompt ? installSteps() : null;
+    return `<div class="ob"><div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
+      <h2 id="sheetTitle" class="ob-title">Put Cura on your Home Screen</h2>
+      <p class="ob-text">It opens straight into your chat, like an app${isIOS() ? ", and it's the only way iPhone allows Cura's daily reminders" : ''}.</p>
+      ${installPrompt ? '<button class="btn primary" data-action="install" style="width:100%;max-width:320px">Install Cura</button>' : `<ol class="install-steps">${g.steps.map(x => `<li><span>${x}</span></li>`).join('')}</ol>`}</div>
+      <div class="row" style="justify-content:center;margin-top:12px"><button class="btn ghost" data-action="install-later">Maybe later</button></div>
+      ${g && g.where !== 'none' ? `<div class="install-arrow ${g.where}" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6"/></svg></div>` : ''}`;
   }
 
   // ---------- Community: your group, ideas from it, and your daily plan ----------
@@ -661,10 +685,38 @@
       const prev = msgs[i - 1], next = msgs[i + 1];
       if (!prev || gap(prev, m)) html += `<div class="stamp">${stampText(m.at)}</div>`;
       if (!m.mine && !same(prev, m)) html += `<div class="sender${m.cura ? ' cura' : ''}">${esc(m.name)}</div>`;
-      html += `<div class="msg ${m.mine ? 'me' : 'them'}${m.cura ? ' cura' : ''}${same(m, next) ? '' : ' tail'}">${fmtMsg(m.text)}</div>`;
+      // Tap someone else's message to react; reactions show underneath.
+      html += m.mine
+        ? `<div class="msg me${same(m, next) ? '' : ' tail'}">${fmtMsg(m.text)}</div>`
+        : `<button class="msg them${m.cura ? ' cura' : ''}${same(m, next) ? '' : ' tail'}" data-react-open="${esc(m.id)}" aria-label="${esc(m.name)}: ${esc(m.text)}. Tap to react">${fmtMsg(m.text)}</button>`;
+      const rs = ui.cm.reactions[m.id] || [];
+      if (rs.length || ui.cm.reactFor === m.id) html += `<div class="reacts ${m.mine ? 'mine' : ''}">${rs.map(r => `<button class="react-pill ${r.mine ? 'on' : ''}" data-react="${r.e}" data-msg="${esc(m.id)}" aria-pressed="${r.mine}" aria-label="${r.e} ${r.n}">${r.e} ${r.n}</button>`).join('')}${ui.cm.reactFor === m.id ? REACTS.filter(e => !rs.some(r => r.e === e && r.mine)).map(e => `<button class="react-add" data-react="${e}" data-msg="${esc(m.id)}" aria-label="React ${e}">${e}</button>`).join('') : ''}</div>`;
     });
     if (ui.cm.posting) html += `<div class="msg me tail sending">${fmtMsg(ui.cm.posting)}</div>`;
     return html;
+  }
+  const REACTS = ['💜', '🙌', '🤗'];
+  // Reactions come back with every check for new messages; redraw only when they changed.
+  function takeReactions(d) {
+    if (!d || !d.reactions) return false;
+    const changed = JSON.stringify(d.reactions) !== JSON.stringify(ui.cm.reactions);
+    ui.cm.reactions = d.reactions;
+    return changed;
+  }
+  async function react(msgId, emoji) {
+    ui.cm.reactFor = '';
+    // Show it straight away, then take the server's answer.
+    const list = (ui.cm.reactions[msgId] || []).map(r => ({ ...r }));
+    const r = list.find(x => x.e === emoji);
+    if (r) { r.mine = !r.mine; r.n += r.mine ? 1 : -1; } else list.push({ e: emoji, n: 1, mine: true });
+    ui.cm.reactions = { ...ui.cm.reactions, [msgId]: list.filter(x => x.n > 0) };
+    refreshGroup(false);
+    try {
+      const last = ui.cm.messages[ui.cm.messages.length - 1];
+      const d = await api('group-react', { msgId, emoji, since: last ? last.at : '' }, { keepUser: true });
+      ui.cm.messages = mergeMsgs(ui.cm.messages, d.messages || []); takeReactions(d);
+    } catch (e) { toast(e.message); }
+    refreshGroup(false);
   }
   const mergeMsgs = (a, b) => { const seen = new Set(); return [...a, ...b].filter(m => !seen.has(m.id) && seen.add(m.id)); };
 
@@ -679,7 +731,7 @@
       if (d.group) ui.cm.group = d.group;
       if (d.notice !== undefined) user.community.notice = d.notice;
       const next = mergeMsgs(full ? [] : ui.cm.messages, d.messages || []);
-      const changed = first || full || next.length !== ui.cm.messages.length;
+      const changed = takeReactions(d) || first || full || next.length !== ui.cm.messages.length;
       ui.cm.messages = next; ui.cm.loaded = true; ui.unread = 0; updateBadge();
       if (changed && route === 'community') refreshGroup(first || full);
       if (ui.sheet === 'cm') renderSheet();
@@ -722,7 +774,7 @@
     try {
       const last = ui.cm.messages[ui.cm.messages.length - 1];
       const d = await api('group-post', { text, since: last ? last.at : '' }, { keepUser: true });
-      ui.cm.messages = mergeMsgs(ui.cm.messages, d.messages || []);
+      ui.cm.messages = mergeMsgs(ui.cm.messages, d.messages || []); takeReactions(d);
       if (d.group) ui.cm.group = d.group;
     } catch (e) {
       toast(e.message);
@@ -861,6 +913,53 @@
     render();
   }
 
+  // ---------- Short tips: one sentence, one thing at a time, once per screen, always skippable ----------
+  const TIPS = {
+    chat: [
+      { sel: '.head-plus', text: () => 'Tap + for a quick check-in: your mood, symptoms and period in a few taps.' },
+      { sel: '#composer', text: () => "Or just text Cura in your own words. She'll save it for you." }
+    ],
+    today: [{ sel: '.week-card', text: () => 'Your week at a glance: darker circles mean stronger symptoms. Your plan and next visit are below.' }],
+    community: [{ sel: '.lock-card, .cm-tabs', text: () => (joined() ? "Share what's helped you, and tap anyone's message to react. Tips you'll like show up in Ideas for you." : 'After 3 check-ins your Circle opens: a small group of people with symptoms like yours.') }]
+  };
+  let coach = null; // { screen, i } while a tip is showing
+  const tipsSeen = () => { try { return JSON.parse(store.get(TIPS_KEY) || '{}'); } catch { return {}; } };
+  function maybeTips() {
+    if (coach || ui.sheet || !ui.loaded || document.body.classList.contains('kb-open') || !TIPS[route] || tipsSeen()[route]) return;
+    const screen = route;
+    setTimeout(() => { if (!coach && !ui.sheet && route === screen && !tipsSeen()[screen]) { coach = { screen, i: 0 }; drawCoach(); } }, 500);
+  }
+  function drawCoach() {
+    let root = document.getElementById('coach');
+    if (!coach) { if (root) root.remove(); return; }
+    const list = TIPS[coach.screen], tip = list[coach.i], el = document.querySelector(tip.sel);
+    if (!el) { coach = null; drawCoach(); return; } // not on screen yet (e.g. the Circle before joining): try again next time
+    const r = el.getBoundingClientRect(), pad = 6, w = Math.min(300, innerWidth - 24);
+    const below = r.bottom + 190 < innerHeight;
+    const left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2));
+    if (!root) { root = document.createElement('div'); root.id = 'coach'; document.body.appendChild(root); }
+    root.innerHTML = `<div class="coach-ring" style="left:${r.left - pad}px;top:${r.top - pad}px;width:${r.width + pad * 2}px;height:${r.height + pad * 2}px"></div>
+      <div class="coach-tip" role="dialog" aria-label="Tip" style="width:${w}px;left:${left}px;${below ? `top:${r.bottom + pad + 12}px` : `bottom:${innerHeight - r.top + pad + 12}px`}">
+        <p>${esc(tip.text())}</p>
+        <div class="row"><button class="coach-skip" data-coach="skip">Skip tips</button><span class="coach-count">${list.length > 1 ? `${coach.i + 1} of ${list.length}` : ''}</span><button class="btn small primary" data-coach="next">${coach.i < list.length - 1 ? 'Next' : 'Got it'}</button></div>
+      </div>`;
+    root.querySelector('[data-coach="next"]').focus({ preventScroll: true });
+  }
+  function endCoach(all) {
+    const seen = tipsSeen();
+    if (all) Object.keys(TIPS).forEach(k => { seen[k] = 1; }); else if (coach) seen[coach.screen] = 1;
+    store.set(TIPS_KEY, JSON.stringify(seen));
+    coach = null; drawCoach();
+  }
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-coach]');
+    if (!b) return;
+    e.stopPropagation();
+    if (b.dataset.coach === 'skip') endCoach(true);
+    else if (coach && coach.i < TIPS[coach.screen].length - 1) { coach.i++; drawCoach(); } else endCoach(false);
+  }, true);
+  window.addEventListener('resize', () => { if (coach) drawCoach(); });
+
   // ---------- Calendar subscription ----------
   function calLinks() {
     if (!ui.calUrl) return null;
@@ -916,8 +1015,11 @@
     if (wasTour) { saveObName(); store.set(OB_KEY, '1'); }
     if (ui.sheet === 'cm') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; }
     if (ui.sheet === 'account') store.set(ACCT_KEY, '1');
+    if (ui.sheet === 'install') store.set(INSTALL_KEY, '1');
     ui.sheet = null;
-    if (wasTour) render(); else renderSheet(); // so Cura's first message picks up their answers
+    // Right after the welcome, on a phone browser: offer the Home Screen (reminders need it on iPhone).
+    if (wasTour && wantsInstall()) ui.sheet = 'install';
+    if (wasTour) render(); else { renderSheet(); maybeTips(); } // so Cura's first message picks up their answers
   }
   function quickLogHtml() {
     const L = ui.log, yesterday = addDays(today(), -1);
@@ -997,7 +1099,7 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet');
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml }[ui.sheet]()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml }[ui.sheet]()}</div>`;
     if (!wasOpen) root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
   }
@@ -1070,6 +1172,16 @@
       try { await api('community-settings', { anonymous: capp.dataset.cmAppear === '1' }); toast('Saved'); await loadGroup(true); } catch (err) { toast(err.message); }
       renderSheet(); return;
     }
+    const ro = e.target.closest('[data-react-open]');
+    if (ro) { ui.cm.reactFor = ui.cm.reactFor === ro.dataset.reactOpen ? '' : ro.dataset.reactOpen; refreshGroup(false); return; }
+    const rx = e.target.closest('[data-react]');
+    if (rx) { react(rx.dataset.msg, rx.dataset.react); return; }
+    const ca = e.target.closest('[data-cta-action]');
+    if (ca && ca.dataset.ctaAction === 'draft-agenda') {
+      ui.visitTab = 'agenda'; ui.drafting = true; go('visit');
+      try { await api('draft', { mode: 'prep' }); toast('Agenda ready. Edit anything you like.'); } catch (err) { toast(err.message); }
+      ui.drafting = false; render(); return;
+    }
     const os = e.target.closest('[data-ob-sym]');
     if (os) { const n = os.dataset.obSym, F = ui.obSyms, i = F.indexOf(n); if (i >= 0) F.splice(i, 1); else if (F.length < 3) F.push(n); else toast('Pick up to 3 for now'); renderSheet(); return; }
     const sb = e.target.closest('[data-log-sevbtn]');
@@ -1106,6 +1218,9 @@
     }
     else if (act === 'install' && installPrompt) { installPrompt.prompt(); installPrompt.userChoice.finally(() => { installPrompt = null; render(); }); }
     else if (act === 'dismiss-tip') { store.set(TIP_KEY, '1'); render(); }
+    else if (act === 'install-open') { ui.sheet = 'install'; renderSheet(); }
+    else if (act === 'install-later') closeSheet();
+    else if (act === 'tips-again') { store.del(TIPS_KEY); toast('Tips are back. Have a look around 💜'); go('chat'); }
     else if (act === 'month') { const [y, m] = ui.month.split('-').map(Number); const d = new Date(y, m - 1 + Number(a.dataset.dir), 1); ui.month = iso(d).slice(0, 7); render(); }
     else if (act === 'period-on') guarded(() => tool('log_period_start', { date: a.dataset.date }), 'Period start saved');
     else if (act === 'sym-form') { ui.showSymForm = true; render(); $('#symName')?.focus(); }
@@ -1237,6 +1352,7 @@
     }
   });
   document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && coach) { endCoach(false); return; }
     if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
     if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); e.target.blur(); return; }
     if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
@@ -1295,6 +1411,8 @@
       if (!store.get(OB_KEY) && !hasData(user) && !ui.sheet) { ui.ob = 0; ui.sheet = 'welcome'; renderSheet(); }
       // People who started before accounts existed: one gentle prompt to save their Cura.
       else if (ui.googleId && !user.account && hasData(user) && !store.get(ACCT_KEY) && !ui.sheet) { ui.sheet = 'account'; renderSheet(); }
+      else if (wantsInstall() && hasData(user) && !ui.sheet) { ui.sheet = 'install'; renderSheet(); }
+      maybeTips();
     } catch (e) { toast('Offline: showing your last saved data'); }
   })();
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

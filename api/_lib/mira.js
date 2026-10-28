@@ -473,7 +473,7 @@ export async function handleIncoming(user, text, today, deps) {
     });
   }
 
-  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions|patterns|community_note|community_ideas)>/g, '').trim().slice(0, 4000);
+  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions|patterns|community_note|community_ideas|your_last_message)>/g, '').trim().slice(0, 4000);
   user.history = [...history, { role: 'user', text }, { role: 'assistant', text: reply }].slice(-HISTORY_TURNS);
   user.actionLog = [...(user.actionLog || []), ...actions].slice(-30);
   return reply;

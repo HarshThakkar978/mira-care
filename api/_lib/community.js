@@ -16,6 +16,8 @@ import {
 
 const GROUPS = 'cura:groups', TIPS = 'cura:tips';
 const msgsKey = id => `cura:group:${id}:msgs`;
+const reactKey = id => `cura:group:${id}:reacts`; // message id → { emoji: [user keys] }
+export const REACTIONS = ['💜', '🙌', '🤗'];
 const readKey = key => `cura:read:${key}`;
 const calKey = token => `cura:cal:${token}`;
 const MSG_KEEP = 500, PAGE = 100;
@@ -86,6 +88,38 @@ async function rewriteMessages(groupId, keep) {
   return all.length - next.length;
 }
 
+// Reactions on group messages, as { msgId: [{ e, n, mine }] } for this person.
+async function reactionsFor(groupId, key) {
+  const flat = (await rcmd(['HGETALL', reactKey(groupId)])) || [];
+  const out = {};
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    let r; try { r = JSON.parse(flat[i + 1]); } catch { continue; }
+    const list = REACTIONS.filter(e => (r[e] || []).length).map(e => ({ e, n: r[e].length, mine: r[e].includes(key) }));
+    if (list.length) out[flat[i]] = list;
+  }
+  return out;
+}
+// Tapping a reaction adds it, tapping it again takes it back.
+export async function toggleReaction(groupId, msgId, key, emoji) {
+  if (!REACTIONS.includes(emoji) || !/^[a-f0-9]{12}$/.test(msgId)) return;
+  await withLock(`react:${groupId}`, async () => {
+    const raw = await rcmd(['HGET', reactKey(groupId), msgId]);
+    const r = raw ? JSON.parse(raw) : {};
+    const who = new Set(r[emoji] || []);
+    if (who.has(key)) who.delete(key); else who.add(key);
+    r[emoji] = [...who];
+    await rcmd(['HSET', reactKey(groupId), msgId, JSON.stringify(r)]);
+  }, 5000);
+}
+async function dropReactionsBy(groupId, key) {
+  const flat = (await rcmd(['HGETALL', reactKey(groupId)])) || [];
+  for (let i = 0; i + 1 < flat.length; i += 2) {
+    const r = JSON.parse(flat[i + 1]); let changed = false;
+    for (const e of Object.keys(r)) if (r[e].includes(key)) { r[e] = r[e].filter(k => k !== key); changed = true; }
+    if (changed) await rcmd(['HSET', reactKey(groupId), flat[i], JSON.stringify(r)]);
+  }
+}
+
 // What a member sees: names come from the group's member list (so switching to anonymous renames old messages too).
 export async function groupView(key, user, since = '') {
   const g = (await loadGroups()).find(x => x.id === user.community.groupId);
@@ -97,7 +131,7 @@ export async function groupView(key, user, since = '') {
     id: m.id, at: m.at, text: m.text, kind: m.kind || '', cura: m.from === 'cura', mine: m.from === key,
     name: m.from === 'cura' ? 'Cura' : m.from === key ? displayName(user) : names.get(m.from) || 'Former member'
   }));
-  return { group: { id: g.id, name: g.name, focus: g.focus, size: g.members.length, members: g.members.map(m => (m.key === key ? `${m.name} (you)` : m.name)) }, messages };
+  return { group: { id: g.id, name: g.name, focus: g.focus, size: g.members.length, members: g.members.map(m => (m.key === key ? `${m.name} (you)` : m.name)) }, messages, reactions: await reactionsFor(g.id, key) };
 }
 
 export async function unreadCount(key, user) {
@@ -191,9 +225,9 @@ export async function leaveCommunity(key, user, { purge = false } = {}) {
     emptied.push(...groups.filter(g => !g.members.length).map(g => g.id));
     await saveGroups(keep);
   });
-  for (const id of emptied) await rcmd(['DEL', msgsKey(id)]);
+  for (const id of emptied) await rcmd(['DEL', msgsKey(id), reactKey(id)]);
   if (purge) {
-    for (const g of await loadGroups()) await rewriteMessages(g.id, m => m.from !== key);
+    for (const g of await loadGroups()) { await rewriteMessages(g.id, m => m.from !== key); await dropReactionsBy(g.id, key); }
     await withLock('tips', async () => {
       const tips = (await loadTips()).filter(t => t.author !== key);
       for (const t of tips) { t.reports = (t.reports || []).filter(r => r.key !== key); t.outcomes = (t.outcomes || []).filter(o => o.key !== key); }
@@ -282,6 +316,8 @@ async function askAuthor(key, { tipId, text }) {
 export async function chatContext(key, user, text) {
   const notes = [];
   const last = [...user.transcript].reverse().find(m => m.from === 'mira');
+  // Cura's own messages (visit check-in, recap) carry a note on what she asked, since they aren't in her memory.
+  if (last && last.note) notes.push(`<your_last_message>${last.note}</your_last_message>`);
   const askedTip = last && last.ui && last.ui.tipAsk;
   if (askedTip) {
     const how = ANSWER_HOW[text.trim().toLowerCase().replace(/[.!]+$/, '')];
@@ -364,7 +400,7 @@ export async function noteTipUse(tipId, key, { added = false, outcome = '' } = {
     const tips = await loadTips();
     const t = tips.find(x => x.id === tipId);
     if (!t) return;
-    if (added) t.added = (t.added || 0) + 1;
+    if (added) { t.added = (t.added || 0) + 1; t.adds = [...(t.adds || []), { key, at: nowIso() }].slice(-200); }
     if (outcome) t.outcomes = [...(t.outcomes || []).filter(o => o.key !== key), { key, howWell: outcome, at: nowIso() }];
     await saveTips(tips);
   });
@@ -447,7 +483,7 @@ export async function regroup({ force = false } = {}) {
       return g;
     });
     await saveGroups(next);
-    for (const g of current) if (!next.some(n => n.id === g.id)) await rcmd(['DEL', msgsKey(g.id)]);
+    for (const g of current) if (!next.some(n => n.id === g.id)) await rcmd(['DEL', msgsKey(g.id), reactKey(g.id)]);
     return true;
   }, 60000);
   if (!applied) return { changed: false, cleaned, members: members.length, raced: true };

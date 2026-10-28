@@ -9,7 +9,7 @@ import { verifyGoogleToken } from './_lib/google.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 import {
   joinCommunity, updateCommunity, leaveCommunity, eraseUser, groupView, unreadCount, postMessage, extractTips,
-  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings
+  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings, toggleReaction
 } from './_lib/community.js';
 import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess, circleInvite } from './_lib/community-logic.js';
 
@@ -179,6 +179,11 @@ export async function POST(request) {
       const msg = await postMessage(user.community.groupId, key, text);
       // Claude reads it for tips after the reply has gone out.
       waitUntil(extractTips(user.community.groupId, msg, key, displayName(user)).catch(e => console.error('tip extraction failed', e)));
+      return json((await groupView(key, user, since)) || { group: null, messages: [] });
+    }
+    if (action === 'group-react') {
+      if (!user.community.joined || !user.community.groupId) return json({ error: 'Join the Circle first' }, 400);
+      await toggleReaction(user.community.groupId, String(body.msgId || ''), key, String(body.emoji || ''));
       return json((await groupView(key, user, since)) || { group: null, messages: [] });
     }
     if (action === 'ideas') return json({ ideas: ideasFor(user, await loadTips(), today()) });

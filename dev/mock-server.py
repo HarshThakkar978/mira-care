@@ -10,6 +10,7 @@ USERS = {}
 PAGE = 80
 GROUP = {"id": "g1", "name": "Sleep & night sweats", "focus": "For people whose nights are broken by heat and sweats.", "members": ["Hazel", "Juniper", "Maya"]}
 GMSGS = []
+REACTS = {}  # msg id -> {emoji: set of user ids}
 TIPS = [
     {"id": "t1", "status": "approved", "source": "member", "symptom": "night sweats", "title": "Keep a fan by your bed", "details": "A small fan pointed at the bed, on all night.", "when": "bedtime", "kind": "everyday", "why": "Moving air helps sweat evaporate, which cools your skin faster when a sweat hits.", "shared": 3, "tried": 4, "helped": 3, "howWell": "a_lot", "quote": "Honestly a little fan by the bed changed everything for me", "authorName": "Hazel"},
     {"id": "t2", "status": "approved", "source": "team", "symptom": "night sweats", "title": "Sleep in cotton or bamboo layers", "details": "", "when": "bedtime", "kind": "everyday", "why": "Breathable fabrics wick moisture away, so you're less likely to wake up damp and cold.", "shared": 0, "tried": 0, "helped": 0, "howWell": "unclear", "quote": ""},
@@ -68,7 +69,8 @@ def group_view(u, since=""):
     msgs = [{"id": m["id"], "at": m["at"], "text": m["text"], "kind": "", "cura": m["from"] == "cura", "mine": m["from"] == "me",
              "name": "Cura" if m["from"] == "cura" else me if m["from"] == "me" else m["from"]} for m in GMSGS if not since or m["at"] >= since]
     return {"group": {**{k: GROUP[k] for k in ("id", "name", "focus")}, "size": len(GROUP["members"]) + 1, "members": GROUP["members"] + [me + " (you)"]},
-            "messages": msgs, "notice": u["community"].get("notice"), "reason": u["community"].get("reason", "")}
+            "messages": msgs, "notice": u["community"].get("notice"), "reason": u["community"].get("reason", ""),
+            "reactions": {mid: [{"e": e, "n": len(who), "mine": u is not None and id(u) in who} for e, who in r.items() if who] for mid, r in REACTS.items()}}
 
 
 def alias(u):
@@ -153,6 +155,10 @@ def handle(body):
         GMSGS.append({"id": nid(), "from": "me", "text": body["text"], "at": now().isoformat()})
         if "?" in body["text"]:
             GMSGS.append({"id": nid(), "from": "Hazel", "text": "Good question! For me it was the fan, and no screens after 10.", "at": (now() + datetime.timedelta(seconds=1)).isoformat()})
+        return group_view(u, body.get("since", ""))
+    if a == "group-react":
+        who = REACTS.setdefault(body["msgId"], {}).setdefault(body["emoji"], set())
+        who.symmetric_difference_update({id(u)})
         return group_view(u, body.get("since", ""))
     if a == "ideas": return {"ideas": ideas(u)}
     if a == "tip-hide": u["community"]["hidden"].append(body["tipId"]); return {"user": view(u), "ideas": ideas(u)}
