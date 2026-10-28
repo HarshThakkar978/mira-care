@@ -6,6 +6,21 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
     del(k) { try { localStorage.removeItem(k); } catch {} }
   };
+  // Cura moved from mira-care.vercel.app to curadaily.vercel.app. The old address sends people on with their
+  // device code (so their data comes too), their theme and whether they've seen the tour.
+  const OLD_HOST = 'mira-care.vercel.app', NEW_HOST = 'curadaily.vercel.app';
+  if (location.hostname === OLD_HOST) {
+    const q = new URLSearchParams({ moved: '1' });
+    const carry = { device: ID_KEY, theme: THEME_KEY, ob: OB_KEY, acct: ACCT_KEY }; // not the install tip: they need to re-add Cura to the Home Screen
+    for (const [param, key] of Object.entries(carry)) { const v = store.get(key); if (v) q.set(param, v); }
+    location.replace(`https://${NEW_HOST}${location.pathname}?${q}${location.hash}`);
+    return;
+  }
+  const arrived = new URLSearchParams(location.search);
+  if (arrived.get('moved')) {
+    for (const [param, key] of [['theme', THEME_KEY], ['ob', OB_KEY], ['acct', ACCT_KEY]]) if (arrived.get(param)) store.set(key, arrived.get(param));
+    if (!arrived.get('device')) history.replaceState(null, '', location.pathname + location.hash);
+  }
   const newId = () => (crypto.randomUUID ? crypto.randomUUID() : 'id-' + Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
   const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 
@@ -1152,6 +1167,7 @@
 
   // ---------- Start ----------
   render();
+  if (arrived.get('moved')) setTimeout(() => toast(`Cura has a new home: ${NEW_HOST} 💚`), 600);
   (async () => {
     try {
       const d = await api('load');

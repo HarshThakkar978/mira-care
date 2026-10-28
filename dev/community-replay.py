@@ -4,7 +4,7 @@
 # Run: python3 dev/community-replay.py            (add "daily" to also run today's community job once)
 import datetime, json, sys, time, urllib.request, uuid
 
-HOST = "https://mira-care.vercel.app"
+HOST = "https://curadaily.vercel.app"
 API = HOST + "/api/app"
 
 

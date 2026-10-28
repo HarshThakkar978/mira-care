@@ -54,7 +54,7 @@ const today = '2026-10-27';
   check(addToPlan(user, tips[0], today, 'p2') === null, 'not added twice');
   check(!ideasFor(user, tips, today).some(i => i.id === 't1'), 'ideas already in the plan are not offered');
   user.profile.appointmentDate = '2026-11-05'; user.profile.clinician = 'Dr. Patel, MD';
-  let ics = buildIcs(user, { host: 'mira-care.vercel.app', now: new Date('2026-10-27T15:00:00Z') });
+  let ics = buildIcs(user, { host: 'curadaily.vercel.app', now: new Date('2026-10-27T15:00:00Z') });
   check(ics.startsWith('BEGIN:VCALENDAR\r\n') && ics.endsWith('END:VCALENDAR\r\n'), 'calendar file uses CRLF lines');
   check(ics.includes('DTSTART:20261027T213000') && ics.includes('RRULE:FREQ=DAILY;COUNT=7'), 'plan item is a daily bedtime event for a week');
   check(ics.includes('UID:check-p1@') && ics.includes('DTSTART:20261103T190000'), 'one-week check-in event');

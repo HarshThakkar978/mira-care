@@ -11,7 +11,7 @@ export async function vapidKeys() {
   if (!ready) ready = (async () => {
     let keys = await getValue(VAPID_KEY);
     if (!keys) { keys = webpush.generateVAPIDKeys(); await setValue(VAPID_KEY, keys); }
-    webpush.setVapidDetails('https://mira-care.vercel.app', keys.publicKey, keys.privateKey);
+    webpush.setVapidDetails('https://curadaily.vercel.app', keys.publicKey, keys.privateKey);
     return keys;
   })().catch(e => { ready = null; throw e; });
   return ready;

@@ -8,7 +8,7 @@
   // Light by default; "dark" or "system" if chosen in Me → Appearance. Runs before the page paints, so there's no flash.
   (function () {
     var t = 'light';
-    try { t = localStorage.getItem('mira-theme') || 'light'; } catch (e) {}
+    try { t = new URLSearchParams(location.search).get('theme') || localStorage.getItem('mira-theme') || 'light'; } catch (e) {}
     document.documentElement.setAttribute('data-theme', t);
     var dark = t === 'dark' || (t === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
     document.getElementById('themeColor').setAttribute('content', dark ? '#000000' : '#f7f7f3');

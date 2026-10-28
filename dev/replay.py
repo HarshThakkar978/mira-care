@@ -4,7 +4,7 @@
 # Run: python3 dev/replay.py            (or: python3 dev/replay.py elsie)
 import datetime, json, sys, urllib.request, uuid
 
-API = "https://mira-care.vercel.app/api/app"
+API = "https://curadaily.vercel.app/api/app"
 SCENARIOS = {
     "elsie": ["Heyy I've been having crazy cramps and wierd heat flashes, something's I don't ususallt experience",
               "Cramps were a solid 8, and heat flashes were flunctuatinf from 4 to 9",

@@ -23,7 +23,7 @@ Data lives in Upstash Redis, keyed by a random device id stored in the browser (
 
 Text Cura on WhatsApp instead of opening the site. Cura uses Claude to understand messages like "hot flashes last night, maybe a 7" and saves them as structured symptoms, period starts, check-ins and visit notes.
 
-- `api/twilio.js` receives WhatsApp messages through Twilio (works with Twilio's free WhatsApp Sandbox, no business verification). Set the sandbox's "When a message comes in" URL to `https://mira-care.vercel.app/api/twilio`.
+- `api/twilio.js` receives WhatsApp messages through Twilio (works with Twilio's free WhatsApp Sandbox, no business verification). Set the sandbox's "When a message comes in" URL to `https://curadaily.vercel.app/api/twilio`.
 - `api/whatsapp.js` is the same thing for Meta's WhatsApp Cloud API directly, which needs Meta business verification.
 - Visit `/api/twilio` or `/api/whatsapp` in a browser to see which settings are still missing.
 - `api/_lib/respond.js` loads a person's data, gets Cura's reply and saves it. Every channel calls it.
