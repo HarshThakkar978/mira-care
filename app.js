@@ -1012,6 +1012,12 @@
   }
   function closeSheet() {
     const wasTour = ui.sheet === 'welcome';
+    // Nobody stays nameless: finishing (or closing) the welcome needs a name or a Google sign-in.
+    if (wasTour && needsName()) {
+      ui.ob = obSteps().length - 1; ui.obNameErr = true; renderSheet();
+      const f = $('#obName'); if (f) f.focus();
+      return;
+    }
     if (wasTour) { saveObName(); store.set(OB_KEY, '1'); }
     if (ui.sheet === 'cm') { ui.cm.focusEdit = null; ui.cm.confirmLeave = false; }
     if (ui.sheet === 'account') store.set(ACCT_KEY, '1');
@@ -1055,6 +1061,7 @@
   }
   // Welcome: one promise, pick what's hardest, pick a check-in time, then straight into the chat.
   const obSteps = () => ['hello', 'symptoms', 'time'];
+  const needsName = () => !user.profile.name && !user.account && !(ui.obName || '').trim();
   function welcomeHtml() {
     const steps = obSteps();
     const step = steps[Math.min(ui.ob, steps.length - 1)], last = ui.ob >= steps.length - 1;
@@ -1073,8 +1080,10 @@
         <p class="ob-text">A gentle nudge once a day. It's skipped on days you've already checked in.</p>
         <div class="ob-times">${[[8, '☀️', 'Morning', '8 AM'], [20, '🌙', 'Evening', '8 PM']].map(([h, e, l, t]) => `<button class="ob-time ${ui.obHour === h || (user.reminder && user.reminder.enabled && user.reminder.hour === h) ? 'on' : ''}" data-action="ob-time" data-hour="${h}" ${ui.reminderBusy ? 'disabled' : ''}><span aria-hidden="true">${e}</span><b>${l}</b><small>${t}</small></button>`).join('')}</div>
         ${canRemind ? '' : `<p class="ob-hint">${isIOS() ? 'iPhone only allows reminders once Cura is on your Home Screen. Add it from Safari\'s Share menu, then turn this on in <b>Me</b>.' : 'This browser can\'t show reminders. You can still check in anytime.'}</p>`}
-        ${user.profile.name ? '' : `<label class="ob-name-label" for="obName">What should Cura call you? <span>(optional)</span></label>
-        <input class="input" id="obName" data-ob-name maxlength="60" autocomplete="given-name" enterkeyhint="done" placeholder="Your first name" value="${esc(ui.obName || '')}">`}`
+        ${user.profile.name || user.account ? '' : `<label class="ob-name-label" for="obName">What should Cura call you?</label>
+        <input class="input" id="obName" data-ob-name maxlength="60" autocomplete="given-name" enterkeyhint="done" placeholder="Your first name" value="${esc(ui.obName || '')}" aria-required="true" ${ui.obNameErr ? 'aria-invalid="true" aria-describedby="obNameErr"' : ''}>
+        ${ui.obNameErr ? `<p class="ob-err" id="obNameErr" role="alert">Add your first name${ui.googleId ? ', or sign in with Google below' : ''} to start.</p>` : ''}
+        ${ui.googleId ? `<p class="ob-or">or</p>${accountBlock()}` : ''}`}`
     }[step];
     const next = step === 'hello' ? (user.account ? 'Next' : 'Try it first') : last ? 'Start chatting' : ui.obSyms.length ? 'Next' : 'Skip for now';
     return `<div class="ob">${body}</div>
@@ -1342,7 +1351,10 @@
       // Show the intensity slider as soon as something is typed, without losing the cursor.
       if (had !== !!(ui.log.syms.length || el.value.trim())) { const pos = el.selectionStart; renderSheet(); const box = $('[data-log-other]'); box.focus(); box.setSelectionRange(pos, pos); }
     }
-    if (el.matches('[data-ob-name]')) ui.obName = el.value;
+    if (el.matches('[data-ob-name]')) {
+      ui.obName = el.value;
+      if (ui.obNameErr && el.value.trim()) { ui.obNameErr = false; const m = $('#obNameErr'); if (m) m.remove(); el.removeAttribute('aria-invalid'); }
+    }
     if (el.matches('[data-log-sev]') && ui.log) { ui.log.sev = Number(el.value); $('#logSevOut').textContent = el.value; }
     if (el.dataset.edit) {
       const [field, key] = el.dataset.edit.split('.');

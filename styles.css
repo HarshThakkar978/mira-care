@@ -461,6 +461,8 @@ body.kb-open .chat-head .head-plus{display:none}
 .ob-time.on{border:2px solid var(--brand);background:color-mix(in srgb,var(--brand-soft) 60%,var(--surface))}
 .ob-name-label{display:block;font-weight:600;font-size:14px;margin:6px 0 6px}
 .ob-name-label span{color:var(--muted);font-weight:500}
+.ob-err{color:var(--danger);font-size:13.5px;font-weight:600;margin:8px 0 0}
+.ob-or{text-align:center;color:var(--muted);font-size:13px;margin:14px 0 10px}
 #obName{max-width:320px;margin:0 auto;display:block;text-align:center}
 .ob-next{min-width:150px}
 .cta-ico{font-size:26px}
