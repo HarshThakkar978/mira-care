@@ -112,7 +112,8 @@ export async function POST(request) {
     }
 
     if (action === 'test-push') {
-      const sent = await sendToUser(user, { title: 'Cura test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' });
+      // The app sends this phone's own subscription, so the test proves this device works, not another one.
+      const sent = await sendToUser(user, { title: 'Cura test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' }, typeof body.endpoint === 'string' ? body.endpoint : '');
       await storeUser(key, user);
       return json({ sent, user: view(user) });
     }

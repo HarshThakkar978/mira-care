@@ -82,7 +82,7 @@
   // ---------- Routing ----------
   const ROUTES = ['chat', 'today', 'community', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
-  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, googleId: '', signingIn: false, confirmSignOut: false };
+  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, pushHere: 'unknown', pushEndpoint: '', googleId: '', signingIn: false, confirmSignOut: false };
   function freshCm() { return { tab: 'group', group: null, messages: [], loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
@@ -277,7 +277,7 @@
       <button class="cta" data-route="chat"><span style="font-size:28px">💬</span><span><strong>${checkedToday ? 'Anything else today?' : 'How are you feeling today?'}</strong><small>${checkedToday ? 'You checked in today. Tell Cura if anything changes.' : 'Text Cura, it takes 10 seconds.'}</small></span><span class="arrow">›</span></button>
       <div class="quick-row no-print">
         <button class="btn ghost" data-action="quick-log">➕ Quick log</button>
-        ${user.reminder && user.reminder.enabled ? `<button class="btn ghost" data-route="report">📄 Doctor summary</button>` : `<button class="btn ghost" data-route="me">🔔 Daily reminder</button>`}
+        ${user.reminder && user.reminder.enabled && ui.pushHere !== 'no' ? `<button class="btn ghost" data-route="report">📄 Doctor summary</button>` : `<button class="btn ghost" data-route="me">🔔 ${user.reminder && user.reminder.enabled ? 'Reminders on this phone' : 'Daily reminder'}</button>`}
       </div>
       ${insightCard()}
       ${planCard()}
@@ -466,6 +466,18 @@
     </div>`;
   }
 
+  // Whether this phone itself is set up for reminders (they can be on for the account but set up on another
+  // device, like the old mira-care address). 'unknown' until checked.
+  async function checkPushHere() {
+    if (!pushSupported() || (isIOS() && !isStandalone())) { ui.pushHere = 'no'; return; }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      ui.pushEndpoint = sub ? sub.endpoint : '';
+      ui.pushHere = sub && Notification.permission === 'granted' ? 'yes' : 'no';
+    } catch { ui.pushHere = 'no'; }
+    if (route === 'me' || route === 'today') render();
+  }
   function reminderCard() {
     const r = user.reminder || { enabled: false, hour: 20 };
     if (!pushSupported() || (isIOS() && !isStandalone())) {
@@ -477,7 +489,9 @@
     const hours = Array.from({ length: 18 }, (_, i) => i + 6).map(h => `<option value="${h}" ${h === r.hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('');
     return `<p class="card-sub">A gentle nudge once a day to check in with Cura. It's skipped on days you've already logged something.</p>
       <div class="form-grid"><div class="field"><label for="remHour">Remind me around</label><select class="select" id="remHour" data-reminder-hour>${hours}</select></div></div>
-      <div class="row-wrap" style="margin-top:12px">${r.enabled
+      <div class="row-wrap" style="margin-top:12px">${r.enabled && ui.pushHere === 'no'
+        ? `<p class="card-sub" style="margin:0 0 8px;width:100%">Your reminder is on, but not on this phone yet (for example, if you added Cura to your Home Screen again).</p><button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on for this phone'}</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
+        : r.enabled
         ? `<span class="pill">On · around ${hourLabel(r.hour)}</span><button class="btn small ghost" data-action="test-push">Send a test</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
         : `<button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on daily reminder'}</button>`}</div>`;
   }
@@ -492,6 +506,7 @@
     sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToBytes(publicKey) });
     const hour = Number($('#remHour')?.value || user.reminder?.hour || 20);
     await api('reminder', { enabled: true, hour, tz: Intl.DateTimeFormat().resolvedOptions().timeZone, subscription: sub.toJSON() });
+    ui.pushHere = 'yes'; ui.pushEndpoint = sub.endpoint;
   }
 
   // ---------- Appearance (light by default; index.html applies it before the first paint) ----------
@@ -1094,7 +1109,7 @@
       ui.reminderBusy = false; render();
     }
     else if (act === 'reminder-off') guarded(() => api('reminder', { enabled: false }), 'Daily reminder turned off');
-    else if (act === 'test-push') guarded(async () => { const d = await api('test-push'); if (!d.sent) throw new Error('No device to send to. Turn the reminder off and on again.'); }, 'Test sent. It should arrive in a few seconds.');
+    else if (act === 'test-push') guarded(async () => { const d = await api('test-push', { endpoint: ui.pushEndpoint || '' }); if (!d.sent) { ui.pushHere = 'no'; throw new Error("This phone isn't set up for reminders yet. Tap Turn on for this phone."); } }, 'Test sent. It should arrive in a few seconds.');
     else if (act === 'export') {
       const blob = new Blob([JSON.stringify(user, null, 2)], { type: 'application/json' });
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `cura-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
@@ -1155,15 +1170,24 @@
   // iOS doesn't shrink the page when the keyboard opens, it slides it up, which squeezed the chat into a sliver.
   // Size the app to the visible area instead, keep it pinned, and hide the tab bar and suggestions while typing.
   const vv = window.visualViewport;
+  // Only the chat composers resize the app to the space above the keyboard. Other fields (appointment, names,
+  // notes) keep the normal layout and let the phone scroll them into view; shrinking the app for those
+  // pushed the tab bar to the top and left the page blank.
   function fitViewport() {
     if (!vv) return;
-    document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
-    if (document.body.classList.contains('kb-open')) { window.scrollTo(0, 0); scrollThread(); }
+    if (document.body.classList.contains('kb-open')) {
+      document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
+      window.scrollTo(0, 0); scrollThread();
+    } else document.documentElement.style.removeProperty('--app-h');
   }
   if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
   const isTyping = el => el && (el.id === 'msgInput' || el.id === 'groupInput');
   document.addEventListener('focusin', e => { if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); } });
-  document.addEventListener('focusout', e => { if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); scrollThread(); } }, 80); });
+  document.addEventListener('focusout', e => {
+    if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); scrollThread(); } }, 80);
+    // iPhone sometimes leaves the page nudged up after typing in a form field; put it back.
+    else if (e.target.matches && e.target.matches('input, textarea, select')) setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, textarea, select')) window.scrollTo(0, 0); }, 120);
+  });
 
   // ---------- Start ----------
   render();
@@ -1173,6 +1197,7 @@
       const d = await api('load');
       ui.unread = d.communityUnread || 0; updateBadge();
       ui.googleId = d.googleClientId || ''; loadGoogle();
+      if (user.reminder && user.reminder.enabled) checkPushHere();
       // Bring over entries saved by the old browser-only version of the site.
       const old = store.get(OLD_KEY);
       if (old && !hasData(user)) {

@@ -40,12 +40,14 @@ export function reminderMessage(user, date) {
   return { title: `Hi${name} 👋`, body: pick, url: '/#chat' };
 }
 
-// Sends to every saved device; drops subscriptions the browser has revoked. Returns how many succeeded.
-export async function sendToUser(user, message) {
+// Sends to every saved device (or only the one with `onlyEndpoint`); drops subscriptions the browser has revoked.
+// Returns how many succeeded.
+export async function sendToUser(user, message, onlyEndpoint = '') {
   await vapidKeys();
   let sent = 0;
   const keep = [];
   for (const sub of user.reminder.subscriptions) {
+    if (onlyEndpoint && sub.endpoint !== onlyEndpoint) { keep.push(sub); continue; }
     try { await webpush.sendNotification(sub, JSON.stringify(message), { TTL: 6 * 3600 }); sent++; keep.push(sub); }
     catch (e) {
       if (e.statusCode === 404 || e.statusCode === 410) continue; // device unsubscribed
