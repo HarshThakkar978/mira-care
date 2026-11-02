@@ -2,6 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { handleIncoming, normalizeUser, localDate } from './mira.js';
 import { getUser, saveUser } from './store.js';
+import { storyTurn } from './story.js';
 
 const env = name => process.env[name] || '';
 export const MODEL = () => env('MIRA_MODEL') || 'claude-sonnet-5-5';
@@ -29,7 +30,7 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
         return stream.finalMessage();
       }
     : params => client.beta.messages.create(params);
-  let quick = null, idea = null; // tap-to-answer buttons and an idea card Cura attached to this reply (app only)
+  let quick = null, idea = null, source = null; // tap-to-answer buttons, an idea card and a source link Cura attached to this reply (app only)
   const reply = await handleIncoming(user, text, today(), {
     model,
     effort: env('MIRA_EFFORT') || 'low',
@@ -40,11 +41,13 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
     note: extra.note || '',
     ideas: extra.ideas || [],
     onIdea: i => { idea = i; },
+    onSource: s => { source = s; },
     claude
   });
   // Full chat log for the app to display (history above is only the short memory sent to Claude).
   const at = new Date().toISOString();
-  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}), ...(idea ? { idea } : {}) }].slice(-TRANSCRIPT_MAX);
+  user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}), ...(idea ? { idea } : {}), ...(source ? { source } : {}) }].slice(-TRANSCRIPT_MAX);
+  if (channel === 'app') storyTurn(user);
   if (idea) user.offers = { ...user.offers, [idea.id]: today() }; // not offered again for two weeks
   // Anything the app adds after Cura's reply (the Circle invitation).
   if (hooks.afterReply) { const extra = await hooks.afterReply(user).catch(e => { console.error('after reply failed', e); return null; }); if (extra) user.transcript = [...user.transcript, extra].slice(-TRANSCRIPT_MAX); }

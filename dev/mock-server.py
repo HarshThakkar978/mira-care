@@ -2,6 +2,7 @@
 # Includes a fake community: one group with a few members, tips to review, and ideas.
 # Run from the project folder:  SEED=1 python3 dev/mock-server.py . 8790
 # Admin test password: test123 (local only).
+# VOICE=1 pretends the server's voice transcription is on (every recording becomes the same sample sentence).
 import datetime, json, os, sys, time, uuid, http.server, socketserver
 
 ROOT = sys.argv[1] if len(sys.argv) > 1 else "."
@@ -104,10 +105,24 @@ def handle(body):
     if a == "load":
         if os.environ.get("SEED") and not u["symptoms"] and not u.get("_seeded"):
             seed(u); u["_seeded"] = True
-        return {"user": view(u), "communityUnread": 2 if u["community"]["joined"] else 0, "googleClientId": os.environ.get("GOOGLE_ID", ""), "circleOpenAll": bool(os.environ.get("CIRCLE_OPEN"))}
+        return {"user": view(u), "communityUnread": 2 if u["community"]["joined"] else 0, "googleClientId": os.environ.get("GOOGLE_ID", ""), "circleOpenAll": bool(os.environ.get("CIRCLE_OPEN")), "voice": bool(os.environ.get("VOICE"))}
     if a == "transcript":
         loaded = int(body.get("loaded") or 0); end = max(0, len(u["transcript"]) - loaded)
         return {"messages": u["transcript"][max(0, end - PAGE):end], "remaining": max(0, end - PAGE)}
+    if a == "transcribe":
+        if not os.environ.get("VOICE"): return {"error": "Voice is not set up yet"}
+        time.sleep(1.2)
+        return {"text": "Hot flashes again last night, maybe a seven, and I woke up twice."}
+    if a == "story-offer":
+        st = u.setdefault("story", {})
+        if not u["transcript"] or st.get("offeredAt") or st.get("startedAt"): return {"offered": False}
+        st["arm"] = "early"; st["offeredAt"] = now().isoformat()
+        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story-offer", "text": "Quick one 💜 I'm learning to give you more personal insights. Would you tell me a bit about your story so far, like when this started and what you've tried? It takes about 3 minutes, and you can talk instead of typing.", "cta": {"label": "Tell my story", "action": "story-start"}})
+        return {"offered": True, "user": view(u)}
+    if a == "story-start":
+        st = u.setdefault("story", {}); st["startedAt"] = now().isoformat(); st.setdefault("fields", {})
+        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 In your own words, how did this all start, and what has it been like since? Anything helps: your periods, the symptoms that bother you most, things you've tried. Tap the mic and just talk if that's easier."})
+        return {"user": view(u)}
     if a == "insight":
         return {"insight": "Hot flashes showed up on 3 nights this week, mostly around 6–8, and they often came with broken sleep."}
     if a == "tool":
@@ -186,7 +201,15 @@ def chat_stream(h, body):
     text = body["text"]
     low = text.lower()
     idea = None
-    if "sweat" in low:
+    source = None
+    st = u.get("story") or {}
+    if st.get("startedAt") and not st.get("completedAt"):
+        st.setdefault("fields", {}).update({"symptoms_started": "about two years ago", "hardest_symptoms": ["hot flashes", "trouble sleeping"], "periods": "changing"})
+        reply, ui = "Thank you for sharing that 💜 Two years is a long time to carry this. Have you tried anything for it so far, like HRT, supplements or changes at home?", {"kind": "options", "options": ["HRT", "Supplements", "Lifestyle changes", "Nothing yet"]}
+    elif "flash" in low:
+        reply, ui = "Ugh, sorry. Saved it. A small fan nearby and layers you can take off quickly can take the edge off when one hits. Did it wake you up?", {"kind": "options", "options": ["Yes", "No"]}
+        source = {"site": "NHS", "title": "Things you can do to help symptoms", "url": "https://www.nhs.uk/conditions/menopause-and-perimenopause/things-you-can-do/"}
+    elif "sweat" in low:
         reply, ui = "Ugh, that's rough. A few members found a fan by the bed really helps. Did they wake you up?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
         idea = card(TIPS[0], u)
     elif "sleep" in low:
@@ -206,6 +229,7 @@ def chat_stream(h, body):
     m = {"from": "mira", "text": reply, "at": at}
     if ui: m["ui"] = ui
     if idea: m["idea"] = idea
+    if source: m["source"] = source
     u["transcript"] += [{"from": "you", "text": text, "at": at}, m]
     send({"t": "done", "reply": reply, "user": view(u)})
 

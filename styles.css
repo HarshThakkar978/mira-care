@@ -510,3 +510,50 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 /* Readable numbers on the brightest intensity colors in dark mode. */
 :root[data-theme="dark"] .qr-num.s4,:root[data-theme="dark"] .qr-num.s5,:root[data-theme="dark"] .sev-badge.s4{color:#1B1030}
 @media (prefers-color-scheme:dark){:root[data-theme="system"] .qr-num.s4,:root[data-theme="system"] .qr-num.s5,:root[data-theme="system"] .sev-badge.s4{color:#1B1030}}
+
+/* ---------- Voice: talk instead of typing ---------- */
+.composer{position:relative}
+.send.mic{background:var(--brand-soft);color:var(--brand-deep)}
+.send.mic svg,.rec-bar .send svg{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+.composer.can-voice:not(.has-text) .send-go{display:none}
+.composer.has-text .mic{display:none}
+.composer.recording > :not(.rec-bar){display:none}
+.rec-bar{flex:1;display:flex;align-items:center;gap:10px;min-height:44px;padding-left:4px}
+.rec-dot{width:10px;height:10px;border-radius:50%;background:var(--danger);animation:recpulse 1.2s ease-in-out infinite;flex:0 0 auto}
+.rec-label{flex:1;min-width:0;font-size:15px;font-variant-numeric:tabular-nums;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rec-wave{display:flex;align-items:center;gap:3px;height:22px}
+.rec-wave i{width:3px;border-radius:2px;background:var(--brand);height:30%;animation:recwave 1s ease-in-out infinite}
+.rec-wave i:nth-child(2n){animation-delay:.15s}.rec-wave i:nth-child(3n){animation-delay:.3s}.rec-wave i:nth-child(4n){animation-delay:.45s}
+.rec-busy{display:flex;gap:4px}
+.rec-busy i{width:7px;height:7px;border-radius:50%;background:var(--brand);animation:recwave 1s ease-in-out infinite}
+.rec-busy i:nth-child(2){animation-delay:.15s}.rec-busy i:nth-child(3){animation-delay:.3s}
+@keyframes recpulse{50%{opacity:.35}}
+@keyframes recwave{0%,100%{height:25%}50%{height:100%}}
+@media (prefers-reduced-motion:reduce){.rec-dot,.rec-wave i,.rec-busy i{animation:none}.rec-wave i{height:60%}}
+
+/* ---------- Source link under Cura's tip ---------- */
+.msg-src{flex-shrink:0;align-self:flex-start;max-width:min(78%,520px);margin:-2px 0 10px 12px;font-size:12px;line-height:1.4;color:var(--muted);text-decoration:none;padding:4px 0}
+.msg-src span{font-weight:700;color:var(--brand-deep)}
+.msg-src:hover{text-decoration:underline}
+.rtable tbody th{text-align:left;font-weight:600;width:34%;vertical-align:top}
+
+/* ---------- Me: grouped rows like a phone's Settings ---------- */
+.me-page{max-width:640px}
+.me-head{display:flex;align-items:center;gap:14px;margin-bottom:22px}
+.me-avatar{width:56px;height:56px;border-radius:50%;background:var(--brand-soft);color:var(--brand-deep);display:grid;place-items:center;font:700 24px 'Bricolage Grotesque',sans-serif;flex:0 0 auto}
+.me-group{margin-bottom:22px}
+.me-group-title{font-size:12.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);margin:0 0 7px 14px}
+.me-list{background:var(--surface);border:1px solid var(--line);border-radius:18px;overflow:hidden}
+.me-row{display:flex;align-items:center;gap:12px;width:100%;min-height:52px;padding:8px 14px;border:0;background:none;color:var(--ink);font:500 16px Figtree,sans-serif;text-align:left;cursor:pointer}
+.me-row + .me-row{border-top:1px solid var(--line)}
+.me-row:active{background:var(--surface-2)}
+@media (hover:hover){.me-row:hover{background:var(--surface-2)}}
+.me-ico{width:32px;height:32px;border-radius:9px;background:var(--surface-2);display:grid;place-items:center;font-size:17px;flex:0 0 auto}
+.me-label{flex:1;min-width:0}
+.me-val{color:var(--muted);font-size:15px;max-width:45%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.me-chev{color:var(--faint);font-size:22px;line-height:1;margin-left:2px}
+.me-row.danger .me-label{color:var(--danger)}
+.story-list{margin:0 0 16px;display:grid;gap:10px}
+.story-list div{display:grid;gap:2px}
+.story-list dt{font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.story-list dd{margin:0;font-size:15px;line-height:1.45}

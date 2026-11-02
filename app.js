@@ -100,6 +100,7 @@
     const tab = { cycle: 'today', visit: 'today', report: 'today' }[route] || route;
     document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('active', b.dataset.route === tab));
     const view = $('#view');
+    if (rec) stopVoice(true);
     view.innerHTML = { chat: renderChat, today: renderToday, community: renderCommunity, cycle: renderCycle, visit: renderVisit, me: renderMe, report: renderReport }[route]();
     if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
     if (route === 'community') scrollThread();
@@ -157,8 +158,10 @@
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
+      if (m.source) html += `<a class="msg-src" href="${esc(m.source.url)}" target="_blank" rel="noopener"><span>Source</span> ${esc(m.source.site)} · ${esc(m.source.title)} ↗</a>`;
       if (m.idea) html += ideaCardHtml(m.idea, true);
-      if (m.cta && !(m.cta.route === 'community' && joined())) html += m.cta.action
+      const ctaDone = (m.cta && m.cta.route === 'community' && joined()) || (m.cta && m.cta.action === 'story-start' && user.story && user.story.startedAt);
+      if (m.cta && !ctaDone) html += m.cta.action
         ? `<button class="msg-cta" data-cta-action="${esc(m.cta.action)}">${esc(m.cta.label)} ›</button>`
         : `<button class="msg-cta" data-route="${esc(m.cta.route)}">${esc(m.cta.label)} ›</button>`;
     });
@@ -190,6 +193,7 @@
     const last = allMsgs().slice(-1)[0];
     if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Cura's own answer buttons take over
     if (dailyAsk(allMsgs())) return ''; // so do the mood faces
+    if (user.story && user.story.startedAt && !user.story.completedAt) return ''; // and Cura's story questions
     const first = !(user.transcript || []).length;
     const list = first
       ? ['Feeling okay today', 'Rough day today', 'My period started today', 'I had hot flashes last night']
@@ -205,10 +209,10 @@
       ${tip}
       <div class="thread" id="thread" aria-live="polite">${threadHtml()}</div>
       <div class="chips no-print" id="chips">${chipsHtml()}</div>
-      <form class="composer no-print" id="composer">
+      <form class="composer no-print${voiceMode() ? ' can-voice' : ''}" id="composer">
         <label class="sr-only" for="msgInput">Message Cura</label>
         <textarea id="msgInput" rows="1" placeholder="Message Cura" enterkeyhint="send" autocomplete="off"></textarea>
-        <button class="send" id="sendBtn" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+        ${micBtn('msgInput')}<button class="send send-go" id="sendBtn" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
       </form>
     </section>`;
   }
@@ -475,31 +479,70 @@
       </div>`;
   }
 
+  // Me: short rows grouped like a phone's Settings app. Details and explanations live in the sheet each row opens.
+  const meRow = (icon, label, value, attrs, cls = '') => `<button class="me-row ${cls}" type="button" ${attrs}><span class="me-ico" aria-hidden="true">${icon}</span><span class="me-label">${label}</span>${value ? `<span class="me-val">${value}</span>` : ''}<span class="me-chev" aria-hidden="true">›</span></button>`;
+  const meGroup = (title, rows) => `<section class="me-group">${title ? `<h2 class="me-group-title">${title}</h2>` : ''}<div class="me-list">${rows.filter(Boolean).join('')}</div></section>`;
+  const themeName = () => ({ light: 'Light', dark: 'Dark', system: 'Automatic' })[currentTheme()];
   function renderMe() {
-    const p = user.profile, link = `${location.origin}/?device=${deviceId}`;
-    const counts = [[user.symptoms.length, 'symptom'], [user.cycleStarts.length, 'period start'], [user.checkins.length, 'check-in'], [user.preNotes.length + user.postNotes.length, 'visit note']];
-    return `<div class="page">
-      <div class="page-head"><div class="eyebrow">Settings</div><h1 class="title">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${counts.map(([n, w]) => plural(n, w)).join(' · ')}</p></div>
-      ${ui.googleId ? `<div class="card"><h2 class="card-title">🔒 Your account</h2>${user.account
-        ? `<p class="card-sub">Signed in with Google as <b>${esc(user.account.email)}</b>. Your Cura is saved to your account: sign in on any phone to see it.</p><button class="btn ghost" data-action="sign-out">${ui.confirmSignOut ? 'Tap again to sign out of this phone' : 'Sign out'}</button>`
-        : `<p class="card-sub">Sign in so your Cura is saved to your account. If you change phones or delete the app, sign in again and everything comes back.</p>${accountBlock()}`}</div>` : ''}
-      <div class="card"><h2 class="card-title">Your name</h2><p class="card-sub">What Cura calls you.</p><input class="input" data-profile="name" value="${esc(p.name)}" placeholder="Your first name" maxlength="60"></div>
-      ${isStandalone() ? '' : `<div class="card"><h2 class="card-title">📲 Add Cura to your Home Screen</h2>${installHelp()}</div>`}
-      <div class="card"><h2 class="card-title">🔔 Daily reminder</h2>${reminderCard()}</div>
-      <div class="card"><h2 class="card-title">👥 Circle</h2>${joined()
-        ? `<p class="card-sub">You're in <b>${esc((ui.cm.group && ui.cm.group.name) || 'a group')}</b>, shown as <b>${esc(user.community.anonymous || !user.profile.name ? user.community.alias : user.profile.name)}</b>.</p><button class="btn ghost" data-action="cm-settings">Group settings</button>`
-        : `<p class="card-sub">Talk with a small group of people whose symptoms are like yours.</p><button class="btn ghost" data-route="community">Open the Circle</button>`}</div>
-      <div class="card"><h2 class="card-title">📅 Calendar</h2><p class="card-sub">Put your plan and your next appointment on Apple or Google Calendar. It updates by itself.</p><button class="btn ghost" data-action="cal-open">Add to my calendar</button></div>
-      <div class="card"><h2 class="card-title">🎨 Appearance</h2><p class="card-sub">Light, dark, or follow your phone's setting.</p>${themeSeg()}</div>
-      <div class="card"><h2 class="card-title">Use Cura on another device</h2><p class="card-sub">Open this private link on your other phone or computer to see the same chat and data. Don't share it with anyone else.</p>
-        <div class="row-wrap"><button class="btn ghost" data-action="copy-link" data-link="${esc(link)}">Copy my link</button></div></div>
-      <div class="card"><h2 class="card-title">Your data</h2><p class="card-sub">Download a copy of everything, or erase it all.</p>
-        <div class="row-wrap"><button class="btn ghost" data-action="export">Download my data</button>
-        <button class="btn danger" data-action="reset">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button></div></div>
-      <div class="card"><h2 class="card-title">📋 Visits</h2><p class="card-sub">Notes to bring up, your agenda, after-visit notes, and a one-page summary of the last 90 days to print or save as a PDF.</p><div class="row-wrap"><button class="btn ghost" data-route="visit">Open visits</button><button class="btn ghost" data-route="report">Doctor summary</button><button class="btn ghost" data-route="cycle">Cycle calendar</button></div></div>
-      <div class="row-wrap" style="margin-top:14px"><button class="btn ghost" data-action="tips-again" style="flex:1">Show app tips again</button><button class="btn ghost" data-action="show-welcome" style="flex:1">Welcome tour</button></div>
-      <p class="note">Cura is a student project. It organizes your own notes and doesn't give medical advice. <a href="/privacy.html">Privacy & data deletion</a></p>
+    const p = user.profile, r = user.reminder || {}, days = checkinDays();
+    const storyDone = storyRows().length;
+    const reminderVal = !r.enabled ? 'Off' : ui.pushHere === 'no' ? 'Not on this phone' : hourLabel(r.hour);
+    return `<div class="page me-page">
+      <div class="me-head"><div class="me-avatar" aria-hidden="true">${esc((p.name || 'C')[0].toUpperCase())}</div>
+        <div><h1 class="title" style="margin:0">${p.name ? esc(p.name) : 'You'}</h1><p class="sub">${days ? `${plural(days, 'day')} checked in` : 'Welcome to Cura'}${user.account ? ' · signed in' : ''}</p></div></div>
+      ${meGroup('', [
+        meRow('👤', 'Name', p.name ? esc(p.name) : 'Add', 'data-me="name"'),
+        ui.googleId ? meRow('🔒', 'Account', user.account ? 'Google' : 'Not signed in', 'data-me="account"') : '',
+        meRow('📖', 'Your story', storyDone ? 'Shared' : 'Not yet', 'data-me="story"')
+      ])}
+      ${meGroup('Every day', [
+        meRow('🔔', 'Daily reminder', reminderVal, 'data-me="reminder"'),
+        meRow('📅', 'Calendar', '', 'data-action="cal-open"'),
+        meRow('👥', 'Circle', joined() ? esc((ui.cm.group && ui.cm.group.name) || 'Joined') : 'Not joined', joined() ? 'data-action="cm-settings"' : 'data-route="community"')
+      ])}
+      ${meGroup('Visits', [
+        meRow('📝', 'Notes and agenda', '', 'data-route="visit"'),
+        meRow('📄', 'Doctor summary', '', 'data-route="report"'),
+        meRow('🗓️', 'Cycle calendar', '', 'data-route="cycle"')
+      ])}
+      ${meGroup('App', [
+        meRow('🎨', 'Appearance', themeName(), 'data-me="theme"'),
+        isStandalone() ? '' : meRow('📲', 'Add to Home Screen', '', 'data-action="install-open"'),
+        meRow('💻', 'Use on another device', '', 'data-me="device"'),
+        meRow('💡', 'Show app tips again', '', 'data-action="tips-again"'),
+        meRow('👋', 'Welcome tour', '', 'data-action="show-welcome"')
+      ])}
+      ${meGroup('Your data', [
+        meRow('⬇️', 'Download my data', '', 'data-action="export"'),
+        meRow('🗑️', 'Erase everything', '', 'data-me="erase"', 'danger')
+      ])}
+      <p class="note" style="text-align:center">Cura organizes your own notes. It isn't medical advice. <a href="/privacy.html">Privacy</a></p>
     </div>`;
+  }
+  // The sheet behind each Me row.
+  const sheetHead = title => `<div class="sheet-head"><h2 id="sheetTitle" class="sheet-title">${title}</h2><button class="icon-btn soft" data-action="sheet-close" aria-label="Close">×</button></div>`;
+  function meSheetHtml() {
+    const kind = ui.sheet.slice(3), p = user.profile;
+    if (kind === 'name') return `${sheetHead('Your name')}<label class="sr-only" for="meName">Your first name</label>
+      <input class="input" id="meName" data-me-name maxlength="60" autocomplete="given-name" enterkeyhint="done" placeholder="Your first name" value="${esc(p.name)}">
+      <p class="small muted">What Cura calls you.</p><button class="btn primary" data-action="me-name-save" style="width:100%">Save</button>`;
+    if (kind === 'reminder') return `${sheetHead('Daily reminder')}${reminderCard()}`;
+    if (kind === 'theme') return `${sheetHead('Appearance')}${themeSeg()}`;
+    if (kind === 'device') {
+      const link = `${location.origin}/?device=${deviceId}`;
+      return `${sheetHead('Use on another device')}<p class="card-sub">${user.account ? 'Easiest: open Cura on the other device and sign in with the same Google account.' : 'Open this private link on your other phone or computer.'} Keep the link to yourself.</p>
+        <button class="btn ghost" data-action="copy-link" data-link="${esc(link)}" style="width:100%">Copy my private link</button>`;
+    }
+    if (kind === 'story') {
+      const rows = storyRows();
+      return `${sheetHead('Your story')}${rows.length
+        ? `<dl class="story-list">${rows.map(([l, v]) => `<div><dt>${esc(l)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`
+        : '<p class="card-sub">The background behind your symptoms: when it started, your periods, what you\'ve tried. It makes Cura\'s insights more personal and goes on your doctor summary.</p>'}
+        <button class="btn primary" data-action="story-go" style="width:100%">${rows.length ? 'Tell Cura more' : 'Tell Cura my story'}</button>`;
+    }
+    if (kind === 'erase') return `${sheetHead('Erase everything')}<p class="card-sub">This deletes everything you've told Cura on this account, including your chat and Circle messages. It can't be undone.</p>
+      <button class="btn danger" data-action="reset" style="width:100%">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button>`;
+    return '';
   }
 
   // Whether this phone itself is set up for reminders (they can be on for the account but set up on another
@@ -668,10 +711,10 @@
       ${ui.cm.tab === 'ideas' ? `<div class="cm-scroll" id="ideas">${ideasHtml()}</div>` : `
       ${notice ? `<div class="install notice"><span>🔀</span><span>${esc(notice.text)}</span><button class="icon-btn" data-action="cm-notice" aria-label="Dismiss">×</button></div>` : ''}
       <div class="thread" id="gthread" aria-live="polite">${groupThreadHtml()}</div>
-      <form class="composer" id="groupComposer">
+      <form class="composer${voiceMode() ? ' can-voice' : ''}" id="groupComposer">
         <label class="sr-only" for="groupInput">Message your group</label>
         <textarea id="groupInput" rows="1" placeholder="Message your group" enterkeyhint="send" autocomplete="off"></textarea>
-        <button class="send" id="groupSend" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+        ${micBtn('groupInput')}<button class="send send-go" id="groupSend" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24"><path d="M12 19V5M5.5 11.5 12 5l6.5 6.5"/></svg></button>
       </form>`}
     </section>`;
   }
@@ -746,7 +789,7 @@
       const box = $('#groupInput'), val = box ? box.value : '', focused = box && document.activeElement === box;
       render();
       const nb = $('#groupInput');
-      if (nb && val) { nb.value = val; autoGrow(nb); $('#groupSend').disabled = !val.trim(); }
+      if (nb && val) { nb.value = val; autoGrow(nb); $('#groupSend').disabled = !val.trim(); nb.form.classList.toggle('has-text', !!val.trim()); }
       if (nb && focused) nb.focus({ preventScroll: true });
       return;
     }
@@ -779,7 +822,7 @@
       if (d.group) ui.cm.group = d.group;
     } catch (e) {
       toast(e.message);
-      const box = $('#groupInput'); if (box && !box.value) { box.value = text; autoGrow(box); $('#groupSend').disabled = false; }
+      const box = $('#groupInput'); if (box && !box.value) { box.value = text; autoGrow(box); $('#groupSend').disabled = false; box.form.classList.add('has-text'); }
     }
     ui.cm.posting = ''; refreshGroup(false); scrollThread();
   }
@@ -872,6 +915,8 @@
     return ui.signingIn ? '<p class="small muted">Signing you in…</p>' : '<div class="g-btn" aria-label="Continue with Google"></div>';
   }
   function accountSheetHtml() {
+    if (user.account) return `${sheetHead('Account')}<p class="card-sub">Signed in with Google as <b>${esc(user.account.email)}</b>. Sign in on any phone to see your Cura.</p>
+      <button class="btn ghost" data-action="sign-out" style="width:100%">${ui.confirmSignOut ? 'Tap again to sign out of this phone' : 'Sign out'}</button>`;
     return `<div class="ob"><div class="ob-art">🔒</div><h2 id="sheetTitle" class="ob-title">Keep your Cura safe</h2>
       <p class="ob-text">Sign in with Google so everything you've told Cura is saved to your account. If you change phones or delete the app, just sign in again.</p>
       ${accountBlock()}</div>
@@ -1026,7 +1071,7 @@
     ui.sheet = null;
     // Right after the welcome, on a phone browser: offer the Home Screen (reminders need it on iPhone).
     if (wasTour && wantsInstall()) ui.sheet = 'install';
-    if (wasTour) render(); else { renderSheet(); maybeTips(); } // so Cura's first message picks up their answers
+    if (wasTour || route === 'me') render(); else { renderSheet(); maybeTips(); } // so Cura's first message picks up their answers
   }
   function quickLogHtml() {
     const L = ui.log, yesterday = addDays(today(), -1);
@@ -1058,6 +1103,7 @@
       ui.sheet = null; ui.insightTried = false; ui.insight = '';
       toast(`Logged ${parts.join(' · ')} ✓`);
       render();
+      maybeStoryOffer();
     } catch (e) { L.saving = false; toast(e.message); renderSheet(); }
   }
   // Welcome: one promise, pick what's hardest, pick a check-in time, then straight into the chat.
@@ -1109,7 +1155,7 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${{ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml }[ui.sheet]()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml }[ui.sheet] || meSheetHtml)()}</div>`;
     if (wasOpen) root.querySelector('.sheet').scrollTop = top; // a redraw keeps your place in the sheet
     else root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
@@ -1130,6 +1176,7 @@
       <div class="report-head"><div class="brand"><span class="brand-mark">c</span><span class="brand-name">cura</span></div>
         <h1 class="title" style="font-size:26px">Symptom & cycle summary${p.name ? ' · ' + esc(p.name) : ''}</h1>
         <p class="sub">${fmt(from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })} · made ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })}${p.appointmentDate ? ` · for the appointment on ${fmtLong(p.appointmentDate)}${p.clinician ? ' with ' + esc(p.clinician) : ''}` : ''}</p></div>
+      ${storyRows().length ? `<section class="rsec"><h2>My background</h2><table class="rtable"><tbody>${storyRows().map(([l, v]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></section>` : ''}
       ${user.agenda.summary ? `<section class="rsec"><h2>In my words</h2><p>${esc(user.agenda.summary)}</p></section>` : ''}
       <section class="rsec"><h2>Symptoms at a glance</h2>${table(['Symptom', 'Days noticed', 'Average', 'Strongest'], top.map(t => [esc(cap(t.name)), t.days.size, t.sevN ? avgText(t.sevSum, t.sevN) : '—', maxSev(t.name) ? maxSev(t.name) + '/10' : '—']), 'No symptoms logged in this period.')}</section>
       <section class="rsec"><h2>Periods</h2>${table(['Started', 'Days since previous'], [...starts].reverse().slice(0, 12).map((c, i, arr) => [fmtLong(c.date), arr[i + 1] ? diffDays(arr[i + 1].date, c.date) : '—']), 'No period starts logged.')}</section>
@@ -1151,6 +1198,122 @@
     catch { const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); toast(done); }
   }
 
+  // ---------- Voice: talk instead of typing ----------
+  // With the server's transcription (OpenAI) it records a short clip; otherwise it uses the browser's own speech
+  // recognition, which iPhone doesn't offer inside Home Screen apps. Either way the words land in the text box so
+  // they can check them before sending.
+  const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  const canRecord = () => !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  const voiceMode = () => (ui.voice && canRecord() ? 'server' : SpeechRec && !isStandalone() ? 'browser' : '');
+  const MIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
+  const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const micBtn = forId => (voiceMode() ? `<button class="send mic" type="button" data-action="voice-start" data-for="${forId}" aria-label="Talk instead of typing">${MIC_SVG}</button>` : '');
+  // The server says whether its transcription is on only after the first paint; add the mic without a redraw (keeps typed text).
+  function addMics() {
+    if (!voiceMode()) return;
+    for (const [formId, boxId] of [['composer', 'msgInput'], ['groupComposer', 'groupInput']]) {
+      const f = document.getElementById(formId);
+      if (f && !f.querySelector('.mic')) { f.classList.add('can-voice'); f.querySelector('.send-go').insertAdjacentHTML('beforebegin', micBtn(boxId)); }
+    }
+  }
+  const VOICE_MAX_S = 120;
+  let rec = null; // the recording in progress: { box, form, mode, stream, recorder, chunks, recog, text, live, started, timer }
+  const clock = s => `${Math.floor(s / 60)}:${pad(s % 60)}`;
+  function drawRec(state) {
+    const r = rec; if (!r) return;
+    let bar = r.form.querySelector('.rec-bar');
+    if (!bar) { bar = document.createElement('div'); bar.className = 'rec-bar'; r.form.appendChild(bar); }
+    r.form.classList.add('recording');
+    const secs = Math.floor((Date.now() - r.started) / 1000);
+    bar.innerHTML = state === 'busy'
+      ? '<span class="rec-busy"><i></i><i></i><i></i></span><span class="rec-label">Writing it down…</span>'
+      : `<button type="button" class="icon-btn" data-action="voice-cancel" aria-label="Cancel recording">×</button><span class="rec-dot" aria-hidden="true"></span><span class="rec-label" aria-live="polite">${r.live ? esc(r.live.slice(-60)) : clock(secs)}</span><span class="rec-wave" aria-hidden="true">${'<i></i>'.repeat(9)}</span><button type="button" class="send" data-action="voice-stop" aria-label="Done talking">${CHECK_SVG}</button>`;
+  }
+  function endVoice() {
+    const r = rec; rec = null; if (!r) return;
+    clearInterval(r.timer);
+    if (r.stream) r.stream.getTracks().forEach(t => t.stop());
+    r.form.classList.remove('recording');
+    const bar = r.form.querySelector('.rec-bar'); if (bar) bar.remove();
+  }
+  function putText(box, text) {
+    text = String(text || '').trim();
+    if (!text || !document.body.contains(box)) return false;
+    box.value = box.value.trim() ? `${box.value.trimEnd()} ${text}` : text;
+    box.dispatchEvent(new Event('input', { bubbles: true }));
+    box.focus();
+    return true;
+  }
+  const toB64 = blob => new Promise((ok, fail) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(',')[1] || ''); f.onerror = fail; f.readAsDataURL(blob); });
+  async function startVoice(forId) {
+    if (rec) return;
+    const box = document.getElementById(forId), form = box && box.form, mode = voiceMode();
+    if (!form || !mode) return;
+    rec = { box, form, mode, chunks: [], text: '', live: '', started: Date.now() };
+    try {
+      if (mode === 'server') {
+        rec.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
+        rec.recorder = new MediaRecorder(rec.stream, type ? { mimeType: type } : undefined);
+        rec.recorder.ondataavailable = e => { if (rec && e.data && e.data.size) rec.chunks.push(e.data); };
+        rec.recorder.start(500);
+      } else {
+        const g = new SpeechRec();
+        g.lang = navigator.language || 'en-US'; g.continuous = true; g.interimResults = true;
+        g.onresult = e => { if (!rec) return; let fin = '', live = ''; for (const res of e.results) { if (res.isFinal) fin += res[0].transcript; else live += res[0].transcript; } rec.text = fin; rec.live = (fin + ' ' + live).trim(); drawRec(); };
+        g.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow the microphone for Cura to talk instead of typing.'); if (rec && rec.recog === g && e.error !== 'no-speech') endVoice(); };
+        g.onend = () => { if (rec && rec.recog === g) rec.ended = true; };
+        g.start(); rec.recog = g;
+      }
+    } catch (e) {
+      endVoice();
+      toast(e && e.name === 'NotAllowedError' ? "Cura can't use the microphone. Allow it in your phone's Settings, then try again." : "Couldn't start the microphone.");
+      return;
+    }
+    rec.timer = setInterval(() => { if (!rec) return; if ((Date.now() - rec.started) / 1000 >= VOICE_MAX_S) stopVoice(false); else drawRec(); }, 500);
+    drawRec();
+  }
+  async function stopVoice(cancel) {
+    const r = rec; if (!r || r.stopping) return;
+    r.stopping = true; clearInterval(r.timer);
+    if (r.mode === 'server') await new Promise(done => { r.recorder.onstop = done; try { r.recorder.stop(); } catch { done(); } });
+    else {
+      try { r.recog.stop(); } catch {}
+      for (let i = 0; i < 15 && !r.ended; i++) await new Promise(x => setTimeout(x, 100)); // last words arrive just after stopping
+    }
+    if (cancel) { endVoice(); return; }
+    if (r.mode === 'browser') { endVoice(); if (!putText(r.box, r.text || r.live)) toast("I didn't catch that. Try again?"); return; }
+    const blob = new Blob(r.chunks, { type: (r.recorder.mimeType || 'audio/mp4').split(';')[0] });
+    if (r.stream) r.stream.getTracks().forEach(t => t.stop());
+    if (blob.size < 2000) { endVoice(); toast("I didn't catch that. Try again?"); return; }
+    drawRec('busy');
+    try {
+      const d = await api('transcribe', { audio: await toB64(blob), type: blob.type }, { keepUser: true });
+      endVoice();
+      if (!putText(r.box, d.text)) toast("I didn't catch that. Try again?");
+    } catch (e) { endVoice(); toast(e.message); }
+  }
+
+  // ---------- Your story ----------
+  async function startStory() {
+    ui.sheet = null; renderSheet();
+    if (route !== 'chat') go('chat');
+    try { await api('story-start'); } catch (e) { toast(e.message); }
+    if (route === 'chat') { refreshThread(); setTimeout(() => $('#msgInput')?.focus(), 50); } else render();
+  }
+  // Cura's invitation, once it's due (see story.js). New people get it after their first chat instead.
+  async function maybeStoryOffer() {
+    if (!(user.transcript || []).length || (user.story && (user.story.offeredAt || user.story.startedAt))) return;
+    try { const d = await api('story-offer', {}, { keepUser: true }); if (d.offered) { setUser(d.user); if (route === 'chat' && !ui.sending) refreshThread(); } } catch {}
+  }
+  const STORY_LABELS = [['periods', 'Periods'], ['last_period', 'Last period'], ['symptoms_started', 'Symptoms started'], ['hardest_symptoms', 'Hardest symptoms'], ['tried', 'Tried so far'], ['medical', 'Medical background'], ['family', 'Family history'], ['hopes', 'Wants help with'], ['age', 'Age']];
+  const PERIODS_LABEL = { regular: 'Still regular', changing: 'Changing (length varies by a week or more)', skipping: 'Skipping (60+ days between some)', stopped: 'Stopped (12+ months)', not_sure: 'Not sure', not_applicable: "Can't tell (hysterectomy, IUD, pill or similar)" };
+  function storyRows() {
+    const f = (user.story && user.story.fields) || {};
+    return STORY_LABELS.filter(([k]) => f[k] != null && f[k] !== '' && !(Array.isArray(f[k]) && !f[k].length))
+      .map(([k, l]) => [l, k === 'periods' ? PERIODS_LABEL[f[k]] || f[k] : Array.isArray(f[k]) ? f[k].join(', ') : String(f[k])]);
+  }
+
   // ---------- Events ----------
   async function guarded(fn, okMsg) { try { await fn(); if (okMsg) toast(okMsg); } catch (e) { toast(e.message); } render(); }
 
@@ -1166,6 +1329,8 @@
     if (e.target.closest('[data-qr-done]') && ui.multi.length) { const t = ui.multi.join(', '); ui.multi = []; sendMessage(t); return; }
     const day = e.target.closest('[data-day]');
     if (day) { ui.selDay = day.dataset.day; ui.showSymForm = false; render(); return; }
+    const me = e.target.closest('[data-me]');
+    if (me) { if (me.dataset.me === 'account') store.set(ACCT_KEY, '1'); ui.sheet = 'me-' + me.dataset.me; if (me.dataset.me === 'account') ui.sheet = 'account'; renderSheet(); return; }
     const tp = e.target.closest('[data-theme-pick]');
     if (tp) { applyTheme(tp.dataset.themePick); if (ui.sheet) renderSheet(); else render(); return; }
     const vt = e.target.closest('[data-visit]');
@@ -1188,6 +1353,7 @@
     const rx = e.target.closest('[data-react]');
     if (rx) { react(rx.dataset.msg, rx.dataset.react); return; }
     const ca = e.target.closest('[data-cta-action]');
+    if (ca && ca.dataset.ctaAction === 'story-start') { startStory(); return; }
     if (ca && ca.dataset.ctaAction === 'draft-agenda') {
       ui.visitTab = 'agenda'; ui.drafting = true; go('visit');
       try { await api('draft', { mode: 'prep' }); toast('Agenda ready. Edit anything you like.'); } catch (err) { toast(err.message); }
@@ -1210,6 +1376,15 @@
     if (act !== 'cm-leave') ui.cm.confirmLeave = false;
     if (act !== 'sign-out') ui.confirmSignOut = false;
     if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
+    else if (act === 'voice-start') startVoice(a.dataset.for);
+    else if (act === 'story-go') startStory();
+    else if (act === 'me-name-save') {
+      const name = ($('#meName')?.value || '').trim();
+      if (!name) { toast('Add your first name'); return; }
+      guarded(async () => { await tool('save_profile', { name }); ui.sheet = null; }, 'Saved');
+    }
+    else if (act === 'voice-stop') stopVoice(false);
+    else if (act === 'voice-cancel') stopVoice(true);
     else if (act === 'older') loadOlder();
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
     else if (act === 'sheet-close') closeSheet();
@@ -1306,7 +1481,7 @@
     else if (act === 'cal-copy') copy(ui.calUrl, 'Calendar link copied');
     else if (act === 'account-later') { store.set(ACCT_KEY, '1'); closeSheet(); }
     else if (act === 'sign-out') {
-      if (!ui.confirmSignOut) { ui.confirmSignOut = true; renderInPlace(); return; }
+      if (!ui.confirmSignOut) { ui.confirmSignOut = true; if (ui.sheet) renderSheet(); else renderInPlace(); return; }
       // Your data stays in your account; this phone just starts fresh until you sign in again.
       try { window.google?.accounts.id.disableAutoSelect(); } catch {}
       store.set(ID_KEY, newId()); store.del(CACHE_KEY); store.del(OB_KEY);
@@ -1324,15 +1499,15 @@
       const link = document.createElement('a'); link.href = URL.createObjectURL(blob); link.download = `cura-${today()}.json`; link.click(); URL.revokeObjectURL(link.href);
     }
     else if (act === 'reset') {
-      if (!ui.confirmReset) { ui.confirmReset = true; render(); return; }
-      ui.confirmReset = false; ui.cm = freshCm(); ui.calUrl = ''; guarded(() => api('reset'), 'Everything erased');
+      if (!ui.confirmReset) { ui.confirmReset = true; if (ui.sheet) renderSheet(); else render(); return; }
+      ui.confirmReset = false; ui.cm = freshCm(); ui.calUrl = ''; ui.sheet = null; guarded(() => api('reset'), 'Everything erased');
     }
   });
 
   document.addEventListener('submit', e => {
     const form = e.target;
-    if (form.id === 'composer') { e.preventDefault(); const box = $('#msgInput'); const t = box.value; box.value = ''; autoGrow(box); $('#sendBtn').disabled = true; sendMessage(t); return; }
-    if (form.id === 'groupComposer') { e.preventDefault(); const box = $('#groupInput'); const t = box.value; box.value = ''; autoGrow(box); $('#groupSend').disabled = true; postToGroup(t); return; }
+    if (form.id === 'composer') { e.preventDefault(); if (rec) return; const box = $('#msgInput'); const t = box.value; box.value = ''; autoGrow(box); $('#sendBtn').disabled = true; form.classList.remove('has-text'); sendMessage(t); return; }
+    if (form.id === 'groupComposer') { e.preventDefault(); if (rec) return; const box = $('#groupInput'); const t = box.value; box.value = ''; autoGrow(box); $('#groupSend').disabled = true; form.classList.remove('has-text'); postToGroup(t); return; }
     const kind = form.dataset.form; if (!kind) return;
     e.preventDefault();
     const d = new FormData(form);
@@ -1343,8 +1518,8 @@
 
   document.addEventListener('input', e => {
     const el = e.target;
-    if (el.id === 'msgInput') { autoGrow(el); $('#sendBtn').disabled = !el.value.trim(); }
-    if (el.id === 'groupInput') { autoGrow(el); $('#groupSend').disabled = !el.value.trim(); }
+    if (el.id === 'msgInput') { autoGrow(el); $('#sendBtn').disabled = !el.value.trim(); el.form.classList.toggle('has-text', !!el.value.trim()); }
+    if (el.id === 'groupInput') { autoGrow(el); $('#groupSend').disabled = !el.value.trim(); el.form.classList.toggle('has-text', !!el.value.trim()); }
     if (el.matches('[data-cm-name]') && ui.cm.join) ui.cm.join.name = el.value;
     if (el.id === 'symSev') $('#sevOut').textContent = el.value;
     if (el.matches('[data-log-other]') && ui.log) {
@@ -1369,6 +1544,7 @@
     if (e.key === 'Escape' && coach) { endCoach(false); return; }
     if (e.key === 'Escape' && ui.sheet) { closeSheet(); return; }
     if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-ob-name]')) { e.preventDefault(); e.target.blur(); return; }
+    if (e.key === 'Enter' && e.target.matches && e.target.matches('[data-me-name]')) { e.preventDefault(); $('[data-action="me-name-save"]')?.click(); return; }
     if (e.target.id === 'msgInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#composer').requestSubmit(); }
     if (e.target.id === 'groupInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#groupComposer').requestSubmit(); }
   });
@@ -1437,6 +1613,8 @@
       else if (ui.googleId && !user.account && hasData(user) && !store.get(ACCT_KEY) && !ui.sheet) { ui.sheet = 'account'; renderSheet(); }
       else if (wantsInstall() && hasData(user) && !ui.sheet) { ui.sheet = 'install'; renderSheet(); }
       maybeTips();
+      ui.voice = !!d.voice; addMics();
+      if (!ui.sheet) maybeStoryOffer();
     } catch (e) { toast('Offline: showing your last saved data'); }
   })();
   if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));

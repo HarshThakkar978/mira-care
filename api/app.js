@@ -12,6 +12,8 @@ import {
   displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings, toggleReaction
 } from './_lib/community.js';
 import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess, circleInvite } from './_lib/community-logic.js';
+import { storyOffer, storyStart } from './_lib/story.js';
+import { transcribe, voiceConfigured } from './_lib/voice.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Cura uses), so manual entries and chat entries stay in one place.
@@ -27,6 +29,8 @@ const view = user => {
 };
 const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+// After Cura's reply: at most one extra message, the Circle invitation or the "tell me your story" offer.
+const afterReply = key => async u => circleInvite(u, await loadSettings()) || storyOffer(u, key);
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
 export async function POST(request) {
@@ -41,14 +45,14 @@ export async function POST(request) {
     if (action === 'load') {
       const user = await loadUser(key);
       const settings = await loadSettings().catch(() => ({}));
-      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen });
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen, voice: voiceConfigured() });
     }
 
     if (action === 'chat') {
       const text = String(body.text || '').trim().slice(0, 2000);
       if (!text) return json({ error: 'Empty message' }, 400);
       if (body.stream) return streamChat(key, text);
-      const { reply, user } = await miraReply(key, text, 'app', { context: (u, t) => chatContext(key, u, t), afterReply: async u => circleInvite(u, await loadSettings()) });
+      const { reply, user } = await miraReply(key, text, 'app', { context: (u, t) => chatContext(key, u, t), afterReply: afterReply(key) });
       return json({ reply, user: view(user) });
     }
 
@@ -61,6 +65,27 @@ export async function POST(request) {
     }
 
     if (action === 'insight') return json({ insight: await weeklyInsight(key, user) });
+
+    // ---------- Voice and "your story" ----------
+    if (action === 'transcribe') {
+      if (!voiceConfigured()) return json({ error: 'Voice is not set up yet' }, 503);
+      if (!(await allowPost(`${key}:voice`, 60))) return json({ error: "That's a lot of voice notes for one hour. Try typing for a bit." }, 429);
+      try { return json({ text: await transcribe(body.audio, body.type) }); }
+      catch (e) { return json({ error: e.status ? e.message : "Couldn't turn that into text. Please try again." }, e.status || 500); }
+    }
+    if (action === 'story-offer') {
+      // Asked by the app when it opens or after a check-in; adds Cura's invitation once it's due for this person.
+      const msg = storyOffer(user, key);
+      if (!msg) return json({ offered: false });
+      user.transcript = [...user.transcript, msg].slice(-300);
+      await storeUser(key, user);
+      return json({ offered: true, user: view(user) });
+    }
+    if (action === 'story-start') {
+      user.transcript = [...user.transcript, storyStart(user, key)].slice(-300);
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
 
     if (action === 'tool') {
       if (!APP_TOOLS.has(body.name)) return json({ error: 'Unknown tool' }, 400);
@@ -244,7 +269,7 @@ function streamChat(key, text) {
     async start(controller) {
       const send = obj => controller.enqueue(enc.encode(JSON.stringify(obj) + '\n'));
       try {
-        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }), context: (u, t) => chatContext(key, u, t), afterReply: async u => circleInvite(u, await loadSettings()) });
+        const { reply, user } = await miraReply(key, text, 'app', { onText: t => send({ t: 'delta', text: t }), onRound: () => send({ t: 'round' }), context: (u, t) => chatContext(key, u, t), afterReply: afterReply(key) });
         send({ t: 'done', reply, user: view(user) });
       } catch (e) {
         console.error('chat stream error', e);

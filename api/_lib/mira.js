@@ -1,6 +1,7 @@
 // Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
 // Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
 import { freshCommunity, addDays, daysBetween, whenLabel } from './community-logic.js';
+import { freshStory, saveStory, storyNote, PERIODS } from './story.js';
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
@@ -42,6 +43,10 @@ Don't interrogate:
 - Period details such as heavier flow, clots or spotting are worth saving too: log them as a symptom (e.g. "heavier flow than usual").
 - Dates: turn "last night", "yesterday" or "on Tuesday" into a real date using today's date from the context. If it's unclear, use today.
 - Use get_my_history before answering questions about their past entries, patterns, or a summary for a visit.
+- Their background (when this started, how their periods have changed, treatments, surgery, family history) goes in save_background whenever they mention it, not only when you ask. <background> shows what you already know.
+
+## Sources
+When you give a specific comfort idea, explain something about perimenopause, or mention when to see a doctor, call cite_source with the one trusted page that covers it, so they can read more. The app shows it as a small link under your message, so don't mention the link or the source in your text. Only cite a page that really covers what you said, at most one per reply, and none for plain questions, acknowledgements or logging.
 
 ## Boundaries
 - Don't diagnose or say what symptoms mean medically. Everyday comfort ideas are fine (rest, water, food, movement, breathing, cooling down, sleep habits), but don't suggest medicines, supplements, hormones or doses; for those, point them to their clinician.
@@ -166,6 +171,25 @@ export const TOOLS = [
   }
 ];
 
+// Trusted pages Cura can point to under a tip (checked by hand; each one covers the topic in its label).
+export const SOURCES = {
+  nhs_overview: { site: 'NHS', title: 'Menopause and perimenopause', url: 'https://www.nhs.uk/conditions/menopause-and-perimenopause/', about: 'what perimenopause and menopause are, when to see a GP' },
+  nhs_symptoms: { site: 'NHS', title: 'Symptoms of menopause and perimenopause', url: 'https://www.nhs.uk/conditions/menopause-and-perimenopause/symptoms/', about: 'the common symptoms, physical and mental' },
+  nhs_self_help: { site: 'NHS', title: 'Things you can do to help symptoms', url: 'https://www.nhs.uk/conditions/menopause-and-perimenopause/things-you-can-do/', about: 'everyday self-help: hot flushes and sweats, sleep, mood, exercise, diet, cooling down' },
+  nhs_treatment: { site: 'NHS', title: 'Treatment for menopause and perimenopause', url: 'https://www.nhs.uk/conditions/menopause-and-perimenopause/treatment/', about: 'treatment options to discuss with a doctor' },
+  nhs_hrt: { site: 'NHS', title: 'Hormone replacement therapy (HRT)', url: 'https://www.nhs.uk/medicines/hormone-replacement-therapy-hrt/', about: 'HRT basics, for questions about HRT' },
+  nhs_breathing: { site: 'NHS', title: 'Breathing exercises for stress', url: 'https://www.nhs.uk/mental-health/self-help/guides-tools-and-activities/breathing-exercises-for-stress/', about: 'slow breathing for stress, anxiety or a hot flush' },
+  nhs_heavy_periods: { site: 'NHS', title: 'Heavy periods', url: 'https://www.nhs.uk/conditions/heavy-periods/', about: 'heavy or flooding periods and when to get help' },
+  nhs_period_pain: { site: 'NHS', title: 'Period pain', url: 'https://www.nhs.uk/symptoms/period-pain/', about: 'cramps and period pain relief' },
+  nhs_headaches: { site: 'NHS', title: 'Headaches', url: 'https://www.nhs.uk/symptoms/headaches/', about: 'headache self-care and when to get help' },
+  nhs_vaginal_dryness: { site: 'NHS', title: 'Vaginal dryness', url: 'https://www.nhs.uk/symptoms/vaginal-dryness/', about: 'vaginal dryness' },
+  nhs_joint_pain: { site: 'NHS', title: 'Joint pain', url: 'https://www.nhs.uk/symptoms/joint-pain/', about: 'joint pain and aches' },
+  acog_menopause: { site: 'ACOG', title: 'The menopause years', url: 'https://www.acog.org/womens-health/faqs/the-menopause-years', about: 'US obstetricians on perimenopause, symptoms and treatment' },
+  acog_bleeding: { site: 'ACOG', title: 'Perimenopausal bleeding', url: 'https://www.acog.org/womens-health/faqs/perimenopausal-bleeding-and-bleeding-after-menopause', about: 'irregular or unusual bleeding in perimenopause' },
+  owh_relief: { site: "Office on Women's Health", title: 'Menopause symptoms and relief', url: 'https://womenshealth.gov/menopause/menopause-symptoms-and-relief', about: 'symptom relief ideas, including sleep and mood' },
+  nia_hot_flashes: { site: 'National Institute on Aging', title: 'Hot flashes: what can I do?', url: 'https://www.nia.nih.gov/health/menopause/hot-flashes-what-can-i-do', about: 'hot flashes and night sweats: triggers and what helps' }
+};
+
 // App only: tap-to-answer buttons shown under Cura's message. Not offered on WhatsApp.
 export const QUICK_REPLY_TOOL = {
   name: 'show_quick_replies',
@@ -189,6 +213,34 @@ export const IDEA_TOOL = {
   input_schema: { type: 'object', properties: { tip_id: { type: 'string', description: 'The id from <community_ideas>.' } }, required: ['tip_id'] }
 };
 
+// App only: a small "Source" link under Cura's message.
+export const SOURCE_TOOL = {
+  name: 'cite_source',
+  description: `Show one trusted page as a small source link under your message. Use the id of the page that covers what you just said:\n${Object.entries(SOURCES).map(([id, x]) => `- ${id}: ${x.site}, "${x.title}" (${x.about})`).join('\n')}`,
+  input_schema: { type: 'object', properties: { source_id: { type: 'string', enum: Object.keys(SOURCES) } }, required: ['source_id'] }
+};
+
+// App only: their background story (see story.js). Only include what they said; text fields replace the old value.
+export const BACKGROUND_TOOL = {
+  name: 'save_background',
+  description: 'Save background they shared about their perimenopause history. Only include fields they actually told you. Text fields replace the saved value, so include anything already in <background> for that field. Set done=true when the story questions are finished or they want to stop.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      periods: { type: 'string', enum: PERIODS, description: 'regular; changing = cycle length now varies by 7+ days; skipping = 60+ days between some periods; stopped = none for 12+ months; not_sure; not_applicable = can\'t tell because of a hysterectomy, IUD, the pill or similar.' },
+      last_period: { type: 'string', description: 'When their last period was, a date or rough time ("early March").' },
+      symptoms_started: { type: 'string', description: 'When symptoms began, e.g. "about two years ago, at 46".' },
+      hardest_symptoms: { type: 'array', items: { type: 'string' }, description: 'Symptoms that bother them most, plain names.' },
+      tried: { type: 'string', description: 'Treatments or remedies tried (HRT, birth control, supplements, lifestyle changes) and how they went.' },
+      medical: { type: 'string', description: 'Relevant background: surgery such as a hysterectomy or ovaries removed, conditions such as thyroid problems, regular medicines.' },
+      family: { type: 'string', description: "Family history, such as their mother's age at menopause." },
+      hopes: { type: 'string', description: 'What they most want help with, from Cura or their doctor.' },
+      age: { type: 'integer', minimum: 18, maximum: 90 },
+      done: { type: 'boolean', description: 'true when the story questions are finished or they want to stop.' }
+    }
+  }
+};
+
 // Checks and trims what Cura asked to show; returns null if it isn't usable.
 export function cleanQuickReplies(input) {
   const kind = input && input.kind;
@@ -208,7 +260,7 @@ export function freshUser() {
     agenda: { summary: '', topics: [], questions: [] },
     followup: { summary: '', steps: [], questions: [] },
     reminder: { enabled: false, hour: 20, tz: '', subscriptions: [], lastSent: '' },
-    community: freshCommunity(), plan: [], offers: {}, calToken: '',
+    community: freshCommunity(), plan: [], offers: {}, calToken: '', story: freshStory(),
     history: [], actionLog: [], transcript: [], createdAt: new Date().toISOString()
   };
 }
@@ -225,6 +277,8 @@ export function normalizeUser(user) {
   out.community = { ...base.community, ...(out.community || {}) };
   for (const k of ['focus', 'hidden']) if (!Array.isArray(out.community[k])) out.community[k] = [];
   if (!out.offers || typeof out.offers !== 'object') out.offers = {};
+  out.story = { ...base.story, ...(out.story || {}) };
+  if (!out.story.fields || typeof out.story.fields !== 'object') out.story.fields = {};
   for (const k of ['cycleStarts', 'symptoms', 'checkins', 'preNotes', 'postNotes', 'history', 'actionLog', 'transcript', 'plan']) if (!Array.isArray(out[k])) out[k] = [];
   return out;
 }
@@ -315,6 +369,7 @@ export function runTool(user, name, input, today) {
     if (isDate(input.date)) entry.date = input.date;
     return { ok: true, updated: entry };
   }
+  if (name === 'save_background') return saveStory(user, input);
   if (name === 'get_my_history') {
     const days = Number(input.days) > 0 ? Math.min(Number(input.days), 365) : 30;
     const from = new Date(new Date(today + 'T12:00:00Z').getTime() - days * 86400000).toISOString().slice(0, 10);
@@ -361,7 +416,8 @@ function contextNote(user, today, channel) {
     ...recentCheck.map(c => `- checkin id=${c.id} ${c.date}: "${c.feeling}"`)
   ].join('\n') || '(nothing in the last 3 days)';
   const actions = (user.actionLog || []).slice(-10).map(a => `- ${a}`).join('\n') || '(none yet)';
-  return `<context>${facts}</context>\n<patterns>\n${patterns(user, today)}\n</patterns>\n<recent_entries>\n${entries}\n</recent_entries>\n<your_recent_actions>\n${actions}\n</your_recent_actions>`;
+  const story = channel === 'app' ? storyNote(user) : '';
+  return `<context>${facts}</context>${story ? '\n' + story : ''}\n<patterns>\n${patterns(user, today)}\n</patterns>\n<recent_entries>\n${entries}\n</recent_entries>\n<your_recent_actions>\n${actions}\n</your_recent_actions>`;
 }
 
 // Ideas from the community they chose to try, so Cura can ask how they're going.
@@ -406,10 +462,11 @@ function describeAction(name, input, result, at) {
   if (name === 'save_profile') return `${when} saved profile ${JSON.stringify(input)}`;
   if (name === 'add_visit_note') return `${when} saved visit note "${input.text}"`;
   if (name === 'add_after_visit_note') return `${when} saved after-visit note "${input.text}"`;
+  if (name === 'save_background') return `${when} saved background ${JSON.stringify(input)}`;
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void,
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onSource?: (source) => void,
 //         onQuickReplies?: (qr) => void, note?: string (extra context), ideas?: idea cards, onIdea?: (idea) => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
@@ -427,7 +484,7 @@ export async function handleIncoming(user, text, today, deps) {
 
   let reply = '', earlierText = '';
   // The tool list stays the same every turn (so the prompt cache holds); suggest_idea just fails when there are no ideas.
-  const tools = deps.channel === 'app' ? [...TOOLS, QUICK_REPLY_TOOL, IDEA_TOOL] : TOOLS;
+  const tools = deps.channel === 'app' ? [...TOOLS, QUICK_REPLY_TOOL, IDEA_TOOL, SOURCE_TOOL, BACKGROUND_TOOL] : TOOLS;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
     const params = {
       model: deps.model,
@@ -465,6 +522,11 @@ export async function handleIncoming(user, text, today, deps) {
           if (idea && deps.onIdea) deps.onIdea(idea);
           return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(idea ? { ok: true, shown: true } : { ok: false, error: 'Use an id from <community_ideas>.' }), is_error: !idea };
         }
+        if (t.name === SOURCE_TOOL.name) {
+          const src = SOURCES[(t.input || {}).source_id];
+          if (src && deps.onSource) deps.onSource({ site: src.site, title: src.title, url: src.url });
+          return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(src ? { ok: true, shown: true } : { ok: false, error: 'Use an id from the list.' }), is_error: !src };
+        }
         try { result = runTool(user, t.name, t.input, today); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
         const line = t.name === 'get_my_history' ? '' : describeAction(t.name, t.input || {}, result, at);
         if (line) actions.push(line);
@@ -473,7 +535,7 @@ export async function handleIncoming(user, text, today, deps) {
     });
   }
 
-  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions|patterns|community_note|community_ideas|your_last_message)>/g, '').trim().slice(0, 4000);
+  reply = (reply || earlierText || 'Got it, noted.').replace(/<\/?(context|recent_entries|your_recent_actions|patterns|community_note|community_ideas|your_last_message|background)>/g, '').trim().slice(0, 4000);
   user.history = [...history, { role: 'user', text }, { role: 'assistant', text: reply }].slice(-HISTORY_TURNS);
   user.actionLog = [...(user.actionLog || []), ...actions].slice(-30);
   return reply;

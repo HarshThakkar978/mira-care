@@ -35,6 +35,16 @@ SCENARIOS = {
     "multi": ["night sweats 7 last night, brain fog all day today and my knees ache"],
     "offtopic": ["can you write me a cover letter for a marketing job?"],
     "spanish": ["Hola, tengo sofocos muy fuertes por la noche, como un 8"],
+    # "Your story": Cura asks about their background one question at a time and saves it.
+    "story": [("action", "story-start"),
+              "ugh where do I start. my periods got weird about two years ago, sometimes 3 weeks apart sometimes 2 months. the hot flashes and not sleeping are the worst. tried magnesium, didn't do much",
+              "my last one was early october",
+              "no surgeries. I'm on levothyroxine for my thyroid",
+              "my mom went through it at like 50",
+              "I'd just like to know if HRT is an option for me",
+              "47"],
+    # Tips should come with a trusted source link.
+    "tips": ["any tips for night sweats? I'm soaked every night", "what is perimenopause exactly?"],
     "deleteit": ["headache today, a 4", "actually delete that, it was just from not drinking water"],
 }
 
@@ -52,6 +62,8 @@ for name, msgs in SCENARIOS.items():
     print(f"\n===== {name} =====")
     try:
         for m in msgs:
+            if isinstance(m, tuple) and m[0] == "action":
+                d = call(dev, m[1]); print(f"[{m[1]}] CURA: {d['user']['transcript'][-1]['text']}\n"); continue
             if isinstance(m, tuple):
                 _, tool, inp = m
                 inp = dict(inp); days = inp.pop("days_ago", 0)
@@ -59,11 +71,13 @@ for name, msgs in SCENARIOS.items():
                 call(dev, "tool", name=tool, input=inp)
                 continue
             d = call(dev, "chat", text=m)
-            ui = (d["user"]["transcript"][-1] or {}).get("ui")
-            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + "\n")
+            last = [x for x in d["user"]["transcript"] if x["from"] == "mira" and x.get("text") == d["reply"]][-1:] or [{}]
+            ui, src = last[0].get("ui"), last[0].get("source")
+            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + (f"\nSOURCE: {src['site']} · {src['title']}" if src else "") + "\n")
         u = d["user"]
         print("SAVED symptoms:", [(s["name"], s.get("severity"), s.get("impact"), s["date"]) for s in u["symptoms"]])
         print("SAVED periods:", [c["date"] for c in u["cycleStarts"]], "| checkins:", [c["feeling"] for c in u["checkins"]], "| name:", u["profile"]["name"])
+        if u.get("story", {}).get("startedAt"): print("SAVED story:", u["story"]["fields"], "| finished:", bool(u["story"].get("completedAt")))
         print("SAVED visit notes:", [n["text"] for n in u["preNotes"]], "| appointment:", u["profile"].get("appointmentDate"), u["profile"].get("clinician"))
     finally:
         call(dev, "reset")

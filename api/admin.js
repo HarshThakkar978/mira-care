@@ -4,6 +4,7 @@ import { normalizeUser } from './_lib/mira.js';
 import { allUserIds, getUsers, getUser, saveUser, storeConfigured } from './_lib/store.js';
 import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings, freshStartCircle } from './_lib/community.js';
 import { checkinDays } from './_lib/community-logic.js';
+import { storyStats } from './_lib/story.js';
 
 // Ids used by Claude's automated tests ("claude-…" device ids), so they can be cleaned out in one go.
 const isTestId = id => /^web-claude-/.test(id);
@@ -47,7 +48,7 @@ function stats(users) {
     users: users.length, active1: active(1), active7: active(7),
     messages7: allMsgs.filter(t => now - new Date(t).getTime() < 7 * day).length, messagesAll: allMsgs.length,
     symptoms: users.reduce((n, [, u]) => n + u.symptoms.length, 0), reminders: users.filter(([, u]) => u.reminder.enabled).length,
-    perDay
+    perDay, story: storyStats(users.map(([, u]) => u))
   };
 }
 
