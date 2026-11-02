@@ -44,6 +44,10 @@ SCENARIOS = {
               "I'd just like to know if HRT is an option for me",
               "47"],
     # Tips should come with a trusted source link.
+    # The conversation from the first phone test: name known, mood button, then sleep.
+    "harsh": [("setup", "save_profile", {"name": "Harsh"}),
+              "Feeling okay today", "Slept badly", "Woke up and couldn't go back",
+              "yeah it's been like that most of this week", "thanks"],
     "tips": ["any tips for night sweats? I'm soaked every night", "what is perimenopause exactly?"],
     "deleteit": ["headache today, a 4", "actually delete that, it was just from not drinking water"],
 }
@@ -67,13 +71,14 @@ for name, msgs in SCENARIOS.items():
             if isinstance(m, tuple):
                 _, tool, inp = m
                 inp = dict(inp); days = inp.pop("days_ago", 0)
+                if tool == "save_profile": call(dev, "tool", name=tool, input=inp); continue
                 inp["date"] = (datetime.date.today() - datetime.timedelta(days=days)).isoformat()
                 call(dev, "tool", name=tool, input=inp)
                 continue
             d = call(dev, "chat", text=m)
             last = [x for x in d["user"]["transcript"] if x["from"] == "mira" and x.get("text") == d["reply"]][-1:] or [{}]
-            ui, src = last[0].get("ui"), last[0].get("source")
-            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + (f"\nSOURCE: {src['site']} · {src['title']}" if src else "") + "\n")
+            ui, src, sv = last[0].get("ui"), last[0].get("source"), last[0].get("saved")
+            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + (f"\nSOURCE: {src['site']} · {src['title']}" if src else "") + (f"\nSAVED LINE: {', '.join(sv)}" if sv else "") + "\n")
         u = d["user"]
         print("SAVED symptoms:", [(s["name"], s.get("severity"), s.get("impact"), s["date"]) for s in u["symptoms"]])
         print("SAVED periods:", [c["date"] for c in u["cycleStarts"]], "| checkins:", [c["feeling"] for c in u["checkins"]], "| name:", u["profile"]["name"])

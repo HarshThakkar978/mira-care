@@ -410,6 +410,13 @@ function nameLastUsed(user) {
   return i < 6 ? `you used it ${i === 0 ? 'in your last message' : `${i + 1} messages ago`}, so leave it out` : 'you haven\'t used it lately';
 }
 
+// Cura's question from her last message, so she doesn't ask it again when they skip it.
+function lastQuestion(user) {
+  const last = [...(user.history || [])].reverse().find(h => h.role === 'assistant');
+  const q = last && (String(last.text).match(/[^.!?\n]*\?/g) || []).pop();
+  return q ? `Your last question to them was "${q.trim()}". If their message doesn't answer it, let it go: don't ask it again in any words.` : '';
+}
+
 // Facts Cura needs each turn: date, profile, and what's actually saved recently (with ids),
 // so she updates entries instead of duplicating them and never has to guess what she did.
 function contextNote(user, today, channel) {
@@ -425,6 +432,7 @@ function contextNote(user, today, channel) {
     channel === 'app' ? 'The app shows a small "Saved" line under your message listing what you saved, so never confirm saving in words.' : '',
     !user.history.length && channel === 'app' ? 'This is their first message. The app already showed your welcome message introducing you, so skip any introduction.' : '',
     !user.history.length && channel !== 'app' ? 'This is their first message to you.' : '',
+    lastQuestion(user),
     planNote(user, today)
   ].filter(Boolean).join(' ');
   const entries = [
@@ -486,8 +494,8 @@ function describeAction(name, input, result, at) {
 function savedLabel(name, input, result) {
   if (name === 'log_symptoms') return (result.saved || []).map(s => (s.severity ? `${s.name} ${s.severity}/10` : s.name)).join(', ');
   if (name === 'log_period_start') return result.already_saved ? '' : 'period start';
-  if (name === 'log_feeling') return `feeling ${String(input.feeling || '').toLowerCase().slice(0, 30)}`.trim();
-  if (name === 'update_entry') return input.severity ? `updated to ${input.severity}/10` : 'updated';
+  if (name === 'log_feeling') return "today's check-in";
+  if (name === 'update_entry') return input.severity ? `changed to ${input.severity}/10` : 'added the details';
   if (name === 'add_visit_note') return 'for your next visit';
   if (name === 'add_after_visit_note') return 'visit note';
   if (name === 'save_profile') return input.appointmentDate ? 'appointment' : input.name ? 'your name' : '';
