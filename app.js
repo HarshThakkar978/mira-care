@@ -158,7 +158,7 @@
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
-      if (m.source) html += `<a class="msg-src" href="${esc(m.source.url)}" target="_blank" rel="noopener"><span>Source</span> ${esc(m.source.site)} · ${esc(m.source.title)} ↗</a>`;
+      if (m.saved || m.source) html += `<div class="msg-meta${i >= fresh ? ' pop' : ''}">${m.saved && m.saved.length ? `<span class="msg-saved">${CHECK_SVG}Saved: ${esc(m.saved.join(', '))}</span>` : ''}${m.source ? `<a class="msg-src" href="${esc(m.source.url)}" target="_blank" rel="noopener">${BOOK_SVG}${esc(m.source.site)} · ${esc(m.source.title)}</a>` : ''}</div>`;
       if (m.idea) html += ideaCardHtml(m.idea, true);
       const ctaDone = (m.cta && m.cta.route === 'community' && joined()) || (m.cta && m.cta.action === 'story-start' && user.story && user.story.startedAt);
       if (m.cta && !ctaDone) html += m.cta.action
@@ -170,7 +170,7 @@
       ? `<div class="msg them tail live" id="live">${fmtMsg(ui.live)}</div>`
       : `<div class="typing" aria-label="Cura is typing"><i></i><i></i><i></i></div>`);
     else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
-    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || dailyAsk(msgs) || `<div class="msg-status">Delivered</div>`;
+    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || dailyAsk(msgs);
     else html += dailyAsk(msgs);
     return html;
   }
@@ -1207,6 +1207,7 @@
   const voiceMode = () => (ui.voice && canRecord() ? 'server' : SpeechRec && !isStandalone() ? 'browser' : '');
   const MIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
   const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const BOOK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>';
   const micBtn = forId => (voiceMode() ? `<button class="send mic" type="button" data-action="voice-start" data-for="${forId}" aria-label="Talk instead of typing">${MIC_SVG}</button>` : '');
   // The server says whether its transcription is on only after the first paint; add the mic without a redraw (keeps typed text).
   function addMics() {
@@ -1217,21 +1218,45 @@
     }
   }
   const VOICE_MAX_S = 120;
-  let rec = null; // the recording in progress: { box, form, mode, stream, recorder, chunks, recog, text, live, started, timer }
+  let rec = null; // the recording in progress: { box, form, mode, stream, recorder, chunks, recog, ac, analyser, raf, text, live, started, timer }
   const clock = s => `${Math.floor(s / 60)}:${pad(s % 60)}`;
+  const X_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+  const WAVE_BARS = 28;
   function drawRec(state) {
     const r = rec; if (!r) return;
     let bar = r.form.querySelector('.rec-bar');
     if (!bar) { bar = document.createElement('div'); bar.className = 'rec-bar'; r.form.appendChild(bar); }
     r.form.classList.add('recording');
-    const secs = Math.floor((Date.now() - r.started) / 1000);
-    bar.innerHTML = state === 'busy'
-      ? '<span class="rec-busy"><i></i><i></i><i></i></span><span class="rec-label">Writing it down…</span>'
-      : `<button type="button" class="icon-btn" data-action="voice-cancel" aria-label="Cancel recording">×</button><span class="rec-dot" aria-hidden="true"></span><span class="rec-label" aria-live="polite">${r.live ? esc(r.live.slice(-60)) : clock(secs)}</span><span class="rec-wave" aria-hidden="true">${'<i></i>'.repeat(9)}</span><button type="button" class="send" data-action="voice-stop" aria-label="Done talking">${CHECK_SVG}</button>`;
+    if (state === 'busy') { bar.innerHTML = '<div class="rec-row"><span class="rec-busy" aria-hidden="true"><i></i><i></i><i></i></span><span class="rec-label" role="status">Writing it down…</span></div>'; return; }
+    // Built once, then only the timer, the words and the wave change (so taps on ✓ never miss).
+    if (!bar.querySelector('.rec-wave')) bar.innerHTML = `<div class="rec-live" aria-live="polite" hidden></div><div class="rec-row"><button type="button" class="rec-x" data-action="voice-cancel" aria-label="Cancel recording">${X_SVG}</button><span class="rec-dot" aria-hidden="true"></span><span class="rec-time"></span><span class="rec-wave${r.analyser ? ' live' : ''}" aria-hidden="true">${'<i></i>'.repeat(WAVE_BARS)}</span><button type="button" class="send" data-action="voice-stop" aria-label="Done talking">${CHECK_SVG}</button></div>`;
+    bar.querySelector('.rec-time').textContent = clock(Math.floor((Date.now() - r.started) / 1000));
+    const live = bar.querySelector('.rec-live');
+    if (r.live && live.textContent !== r.live) { live.hidden = false; live.textContent = r.live; live.scrollTop = live.scrollHeight; }
+  }
+  // A wave that moves with their voice (when the app records the audio itself), scrolling right to left.
+  function meter(r) {
+    const levels = Array(WAVE_BARS).fill(0.12);
+    const data = new Uint8Array(r.analyser.fftSize);
+    let last = 0;
+    const tick = t => {
+      if (rec !== r || r.stopping) return;
+      r.raf = requestAnimationFrame(tick);
+      if (t - last < 70) return;
+      last = t;
+      r.analyser.getByteTimeDomainData(data);
+      let sum = 0; for (const v of data) sum += (v - 128) * (v - 128);
+      levels.shift(); levels.push(Math.max(0.12, Math.min(1, Math.sqrt(sum / data.length) / 28)));
+      const bars = r.form.querySelectorAll('.rec-wave i');
+      bars.forEach((b, i) => { b.style.height = `${Math.round(levels[i] * 100)}%`; });
+    };
+    r.raf = requestAnimationFrame(tick);
   }
   function endVoice() {
     const r = rec; rec = null; if (!r) return;
     clearInterval(r.timer);
+    if (r.raf) cancelAnimationFrame(r.raf);
+    if (r.ac) r.ac.close().catch(() => {});
     if (r.stream) r.stream.getTracks().forEach(t => t.stop());
     r.form.classList.remove('recording');
     const bar = r.form.querySelector('.rec-bar'); if (bar) bar.remove();
@@ -1250,9 +1275,12 @@
     const box = document.getElementById(forId), form = box && box.form, mode = voiceMode();
     if (!form || !mode) return;
     rec = { box, form, mode, chunks: [], text: '', live: '', started: Date.now() };
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (mode === 'server' && AC) try { rec.ac = new AC(); rec.ac.resume(); } catch {} // made inside the tap, or iPhone keeps it silent
     try {
       if (mode === 'server') {
         rec.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+        if (rec.ac) try { rec.analyser = rec.ac.createAnalyser(); rec.analyser.fftSize = 512; rec.ac.createMediaStreamSource(rec.stream).connect(rec.analyser); } catch { rec.analyser = null; }
         const type = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm'].find(t => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(t));
         rec.recorder = new MediaRecorder(rec.stream, type ? { mimeType: type } : undefined);
         rec.recorder.ondataavailable = e => { if (rec && e.data && e.data.size) rec.chunks.push(e.data); };
@@ -1260,7 +1288,9 @@
       } else {
         const g = new SpeechRec();
         g.lang = navigator.language || 'en-US'; g.continuous = true; g.interimResults = true;
-        g.onresult = e => { if (!rec) return; let fin = '', live = ''; for (const res of e.results) { if (res.isFinal) fin += res[0].transcript; else live += res[0].transcript; } rec.text = fin; rec.live = (fin + ' ' + live).trim(); drawRec(); };
+        // Safari hands back phrases without spaces between them ("preciselyRight"), so join them with one.
+        const join = parts => parts.map(x => x.trim()).filter(Boolean).join(' ').replace(/\s+/g, ' ');
+        g.onresult = e => { if (!rec) return; const fin = [], live = []; for (const res of e.results) (res.isFinal ? fin : live).push(res[0].transcript); rec.text = join(fin); rec.live = join([...fin, ...live]); drawRec(); };
         g.onerror = e => { if (e.error === 'not-allowed' || e.error === 'service-not-allowed') toast('Allow the microphone for Cura to talk instead of typing.'); if (rec && rec.recog === g && e.error !== 'no-speech') endVoice(); };
         g.onend = () => { if (rec && rec.recog === g) rec.ended = true; };
         g.start(); rec.recog = g;
@@ -1272,6 +1302,7 @@
     }
     rec.timer = setInterval(() => { if (!rec) return; if ((Date.now() - rec.started) / 1000 >= VOICE_MAX_S) stopVoice(false); else drawRec(); }, 500);
     drawRec();
+    if (rec.analyser) meter(rec);
   }
   async function stopVoice(cancel) {
     const r = rec; if (!r || r.stopping) return;

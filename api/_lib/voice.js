@@ -1,11 +1,11 @@
 // Voice notes → text, for the mic button in the chat and the Circle. Claude doesn't take audio, so this uses
-// OpenAI's transcription model (about $0.003 a minute). Turned on by adding OPENAI_API_KEY in Vercel; without it
+// OpenAI's most accurate transcription model (about $0.006 a minute; it adds punctuation and capitals itself). Turned on by adding OPENAI_API_KEY in Vercel; without it
 // the app falls back to the browser's own speech recognition where that exists.
-const MODEL = () => process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-mini-transcribe';
+const MODEL = () => process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 export const voiceConfigured = () => !!process.env.OPENAI_API_KEY;
 
 // Words people say to Cura, so the transcript spells them right.
-const PROMPT = 'Notes about perimenopause symptoms and periods: hot flashes, night sweats, brain fog, HRT, progesterone, estrogen, spotting, cramps, insomnia, anxiety, joint pain.';
+const PROMPT = 'A woman talking casually about her perimenopause, periods and symptoms, e.g. hot flashes, night sweats, brain fog, HRT, progesterone, estrogen, spotting, cramps, insomnia, anxiety, joint pain. Write it with normal punctuation and leave out filler words like um and uh.';
 const EXT = { 'audio/mp4': 'mp4', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
 export const MAX_AUDIO_BYTES = 3 * 1024 * 1024; // about 3 minutes of phone audio; Vercel caps the request at 4.5 MB
 

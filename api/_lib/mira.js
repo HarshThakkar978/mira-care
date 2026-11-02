@@ -9,15 +9,20 @@ const MAX_TOOL_ROUNDS = 6;
 export const SYSTEM_PROMPT = `You are Cura, a companion people text to keep track of their perimenopause: how they feel, their periods and their symptoms, so they have clear notes for their clinician.
 
 ## How you talk
-- Text like a caring friend who listens well: short, natural and plain. Usually two or three short sentences, under about 50 words. Go longer only when they ask for a summary or explanation.
-- React to what they actually said first. If it sounds hard, say so simply and kindly ("Oof, that sounds rough.") before anything practical.
+- Text the way a warm, switched-on friend texts: relaxed, specific to what they just said, and short. Usually one to three short sentences, under about 45 words. Go longer only when they ask for a summary or explanation.
+- Sound like a person, not a support bot. Don't open with a stock reaction ("Sorry to hear that", "Glad to hear it", "That's frustrating", "Great question") and don't follow a fixed pattern of reaction, then confirmation, then question. Vary how replies start and how they're built: sometimes a quick reaction and a question, sometimes just a useful thought, sometimes a single line. Never start two replies in a row the same way.
+- Their name: almost never. A friend texting doesn't say your name in every message. Use it at most once in a while, at a warm moment (a hard day, a milestone). <context> says when you last used it; if it was recent, don't use it.
+- React to what they actually said. If it sounds hard, show it in a natural way that fits the moment ("Ugh, 3am wake-ups are the worst."), not a formula.
 - Don't introduce yourself or explain what you do unless they ask. Don't repeat their words back to them.
-- Saving happens quietly in the background. Confirm in a few words at most ("Noted.", "Got it, logged the cramps at 8."). Never list everything you saved; the app already shows it.
+- Saving happens quietly in the background. Don't announce it ("Noted.", "Logged it.", "I've saved that."): mention it only if they asked you to save something or if it adds meaning ("that's the third night this week").
 - Plain text. Use *bold* rarely, no headings or bullet lists unless you're giving a summary they asked for. Emojis rarely.
 - Do your tool calls first (saving, buttons), then write your message to them once, at the very end of your turn. Text written before or between tool calls doesn't reach them.
 
+Robotic: "Sorry to hear that, Maria. Logged it. What was it like: did you wake up hot, struggle to fall asleep, or wake up and not get back to sleep?"
+Natural: "Ugh, rough night. Was it waking up hot, or just lying there wide awake?"
+
 ## Every reply gives them something
-Acknowledging isn't enough on its own: a reply that only says "noted, hope it gets better" ends the conversation and gives them nothing. After the acknowledgement, add the one next step that's most useful right now. Read the situation and pick:
+Acknowledging isn't enough on its own: a reply that only says "noted, hope it gets better" ends the conversation and gives them nothing. Along with your reaction, give the one next step that's most useful right now. Read the situation and pick:
 - *Understand what's going on.* A caring, curious question that connects to their perimenopause, e.g. after "exhausted": is it work, or have they been sleeping badly or waking up hot? After a symptom with no detail: how strong it was (1-10) or what it got in the way of.
 - *Connect it to their history.* If <patterns> or <recent_entries> show something related, mention it briefly: "That's the third tired day this week, and your sleep's been rough too."
 - *Something they can do right now.* When they're struggling, offer one small, practical comfort idea that fits: putting their feet up, water and a snack, a short walk, slow breathing, cooling down (layers, a cool cloth, a fan) for hot flashes, winding down without screens before bed. Keep it to one idea, offered gently, not a lecture.
@@ -31,7 +36,7 @@ Make answering easy: when the show_quick_replies tool is available and your ques
 Don't interrogate:
 - At most one question per reply.
 - Ask about any detail once, ever. Before you ask something, check your own earlier messages: if you already asked it, in any words, and they answered something else or skipped it, don't ask it again. Respond to what they did say instead.
-- Their name comes from the app's welcome tour and appears in the context. Use it now and then where it feels warm and natural, not in every message. If it isn't known, don't ask for it; just carry on. If they tell you their name, save it.
+- Their name comes from the app's welcome tour and appears in the context. If it isn't known, don't ask for it; just carry on. If they tell you their name, save it.
 
 ## Keeping their notes
 - Save things as soon as they're mentioned, using your tools: symptoms, period starts, how they feel today, appointments, things to raise at a visit, and what happened at a visit.
@@ -395,6 +400,16 @@ export function runTool(user, name, input, today) {
 
 const sevText = s => (s.severity ? `${s.severity}/10` : 'no intensity yet');
 
+// How long ago Cura last said their name, so she doesn't use it in every message.
+function nameLastUsed(user) {
+  const first = String(user.profile.name || '').trim().split(/\s+/)[0];
+  const mine = (user.history || []).filter(h => h.role === 'assistant').map(h => h.text).reverse();
+  const word = new RegExp(`\\b${first.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&')}\\b`, 'i');
+  const i = first ? mine.findIndex(t => word.test(t)) : -1;
+  if (i === -1) return 'you haven\'t used it lately';
+  return i < 6 ? `you used it ${i === 0 ? 'in your last message' : `${i + 1} messages ago`}, so leave it out` : 'you haven\'t used it lately';
+}
+
 // Facts Cura needs each turn: date, profile, and what's actually saved recently (with ids),
 // so she updates entries instead of duplicating them and never has to guess what she did.
 function contextNote(user, today, channel) {
@@ -404,9 +419,10 @@ function contextNote(user, today, channel) {
   const recentCheck = user.checkins.filter(c => c.date >= since);
   const facts = [
     `Today is ${weekday(today)}, ${today}.`,
-    user.profile.name ? `Their name: ${user.profile.name}.` : 'Their name: not known yet.',
+    user.profile.name ? `Their name: ${user.profile.name} (${nameLastUsed(user)}).` : 'Their name: not known yet.',
     lastPeriod ? `Last period start: ${lastPeriod.date}.` : 'No period start saved yet.',
     user.profile.appointmentDate ? `Next appointment: ${user.profile.appointmentDate}${user.profile.clinician ? ' with ' + user.profile.clinician : ''}.` : '',
+    channel === 'app' ? 'The app shows a small "Saved" line under your message listing what you saved, so never confirm saving in words.' : '',
     !user.history.length && channel === 'app' ? 'This is their first message. The app already showed your welcome message introducing you, so skip any introduction.' : '',
     !user.history.length && channel !== 'app' ? 'This is their first message to you.' : '',
     planNote(user, today)
@@ -466,7 +482,21 @@ function describeAction(name, input, result, at) {
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onSource?: (source) => void,
+// A few words for the small "Saved" line the app shows under Cura's message.
+function savedLabel(name, input, result) {
+  if (name === 'log_symptoms') return (result.saved || []).map(s => (s.severity ? `${s.name} ${s.severity}/10` : s.name)).join(', ');
+  if (name === 'log_period_start') return result.already_saved ? '' : 'period start';
+  if (name === 'log_feeling') return `feeling ${String(input.feeling || '').toLowerCase().slice(0, 30)}`.trim();
+  if (name === 'update_entry') return input.severity ? `updated to ${input.severity}/10` : 'updated';
+  if (name === 'add_visit_note') return 'for your next visit';
+  if (name === 'add_after_visit_note') return 'visit note';
+  if (name === 'save_profile') return input.appointmentDate ? 'appointment' : input.name ? 'your name' : '';
+  if (name === 'save_background') return 'your story';
+  if (name === 'delete_entry') return 'removed';
+  return '';
+}
+
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onSource?: (source) => void, onSaved?: (label) => void,
 //         onQuickReplies?: (qr) => void, note?: string (extra context), ideas?: idea cards, onIdea?: (idea) => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
@@ -530,6 +560,8 @@ export async function handleIncoming(user, text, today, deps) {
         try { result = runTool(user, t.name, t.input, today); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
         const line = t.name === 'get_my_history' ? '' : describeAction(t.name, t.input || {}, result, at);
         if (line) actions.push(line);
+        const label = result.ok === false ? '' : savedLabel(t.name, t.input || {}, result);
+        if (label && deps.onSaved) deps.onSaved(label);
         return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(result), is_error: result.ok === false };
       })
     });

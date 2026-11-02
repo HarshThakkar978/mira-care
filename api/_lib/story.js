@@ -54,10 +54,9 @@ export function storyOffer(user, key, now = new Date()) {
   if (!user.story.arm) user.story.arm = storyArm(key);
   if (!storyOfferDue(user)) return null;
   user.story.offeredAt = now.toISOString();
-  const name = user.profile && user.profile.name ? `, ${user.profile.name}` : '';
   return {
     from: 'mira', at: now.toISOString(), kind: 'story-offer',
-    text: `Quick one${name} 💜 I'm learning to give you more personal insights. Would you tell me a bit about your story so far, like when this started and what you've tried? It takes about 3 minutes, and you can talk instead of typing.`,
+    text: "Quick one 💜 Could you tell me how this all started for you? It helps me make my insights more personal. About 3 minutes, and you can just talk.",
     cta: { label: 'Tell my story', action: 'story-start' }
   };
 }
@@ -72,7 +71,7 @@ export function storyStart(user, key, now = new Date()) {
   user.story.turns = 0;
   return {
     from: 'mira', at: now.toISOString(), kind: 'story',
-    text: "Thank you 💜 In your own words, how did this all start, and what has it been like since? Anything helps: your periods, the symptoms that bother you most, things you've tried. Tap the mic and just talk if that's easier."
+    text: "Thank you 💜 So, how did it all start, and what's it been like since? Periods, the symptoms that bother you most, anything you've tried. Tap the mic and just talk if that's easier."
   };
 }
 

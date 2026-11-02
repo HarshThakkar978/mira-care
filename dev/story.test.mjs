@@ -21,7 +21,7 @@ const day = n => `2026-11-0${n}`;
   const keyLater = Array.from({ length: 50 }, (_, i) => `web-l-${i}`).find(k => storyArm(k) === 'later');
   const e = normalizeUser({ profile: { name: 'Ana' } });
   const o1 = storyOffer(e, keyEarly);
-  check(o1 && o1.cta.action === 'story-start' && /Ana/.test(o1.text), 'early group is offered straight away, by name');
+  check(o1 && o1.cta.action === 'story-start' && /more personal/.test(o1.text), 'early group is offered straight away');
   check(storyOffer(e, keyEarly) === null, 'offered only once');
   const l = normalizeUser({});
   check(storyOffer(l, keyLater) === null && l.story.arm === 'later', 'later group: not before 3 check-in days');
@@ -31,7 +31,7 @@ const day = n => `2026-11-0${n}`;
   // Starting and saving
   const u = normalizeUser({});
   const first = storyStart(u, keyEarly);
-  check(u.story.startedAt && /own words/.test(first.text) && /mic/.test(first.text), 'start asks an open question and mentions the mic');
+  check(u.story.startedAt && /how did it all start/.test(first.text) && /mic/.test(first.text), 'start asks an open question and mentions the mic');
   check(/agreed to tell you their story/.test(storyNote(u)), 'Cura is told the story is in progress');
   saveStory(u, { periods: 'changing', hardest_symptoms: ['Hot flashes', 'trouble sleeping'], symptoms_started: 'two years ago', age: 47 });
   saveStory(u, { hardest_symptoms: ['hot flashes', 'brain fog'], periods: 'nonsense', age: 300 });
@@ -56,7 +56,7 @@ const day = n => `2026-11-0${n}`;
 
   // Cura's tools: background and a source link, through the real chat loop with a fake Claude
   const user = freshUser();
-  let calls = 0, shown = null;
+  let calls = 0, shown = null; const savedLines = [];
   const claude = async params => {
     calls++;
     const names = params.tools.map(t => t.name);
@@ -71,10 +71,21 @@ const day = n => `2026-11-0${n}`;
     }
     return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Thanks for telling me.' }] };
   };
-  const reply = await handleIncoming(user, 'it started last spring, magnesium did nothing', today, { claude, model: 'x', effort: 'low', channel: 'app', onSource: s => { shown = s; } });
+  const reply = await handleIncoming(user, 'it started last spring, magnesium did nothing', today, { claude, model: 'x', effort: 'low', channel: 'app', onSource: s => { shown = s; }, onSaved: l => savedLines.push(l) });
   check(reply === 'Thanks for telling me.', 'reply comes back');
   check(user.story.fields.symptoms_started === 'last spring' && /magnesium/.test(user.story.fields.tried), 'background saved from chat');
   check(shown && shown.url === SOURCES.nhs_self_help.url, 'valid source shown; made-up id ignored');
+  check(savedLines.join() === 'your story', 'app gets a short "Saved" line');
+
+  // Their name: Cura is told when she last used it, so she leaves it out
+  const named = freshUser(); named.profile.name = 'Harsh';
+  named.history = [{ role: 'user', text: 'hi' }, { role: 'assistant', text: 'Sorry to hear that, Harsh.' }];
+  let ctx = '';
+  await handleIncoming(named, 'slept badly', today, { claude: async p => { ctx = p.messages.at(-1).content; return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Rough night.' }] }; }, model: 'x', effort: 'low', channel: 'app' });
+  check(/Harsh \(you used it in your last message, so leave it out\)/.test(ctx), 'Cura is told she just used their name');
+  check(/never confirm saving in words/.test(ctx), 'Cura is told the app shows what was saved');
+  await handleIncoming(named, 'better today', today, { claude: async p => { ctx = p.messages.at(-1).content; return { stop_reason: 'end_turn', content: [{ type: 'text', text: 'Nice.' }] }; }, model: 'x', effort: 'low', channel: 'app' });
+  check(/Harsh \(you used it 2 messages ago/.test(ctx), 'and counts back from there');
   check(Object.values(SOURCES).every(x => /^https:\/\//.test(x.url) && x.site && x.title), 'every source has a site, title and https link');
 
   log(fail ? `${fail} FAILED` : 'ALL PASSED');

@@ -50,7 +50,7 @@ def seed(u):
         u["transcript"] += [{"from": "you", "text": f"old message {i + 1}", "at": at}, {"from": "mira", "text": f"Reply {i + 1}, noted.", "at": at}]
     at = (now() - datetime.timedelta(hours=26)).isoformat()
     u["transcript"] += [{"from": "you", "text": "hot flashes last night, maybe a 6", "at": at},
-                        {"from": "mira", "text": "Oof, sorry. Logged the *hot flashes* at 6. Did they wake you up?", "at": at}]
+                        {"from": "mira", "text": "Oof, a 6 at night is no fun. Did they wake you up?", "at": at, "saved": ["hot flashes 6/10"]}]
 
 
 def seed_group():
@@ -202,24 +202,29 @@ def chat_stream(h, body):
     low = text.lower()
     idea = None
     source = None
+    saved = []
     st = u.get("story") or {}
     if st.get("startedAt") and not st.get("completedAt"):
         st.setdefault("fields", {}).update({"symptoms_started": "about two years ago", "hardest_symptoms": ["hot flashes", "trouble sleeping"], "periods": "changing"})
         reply, ui = "Thank you for sharing that 💜 Two years is a long time to carry this. Have you tried anything for it so far, like HRT, supplements or changes at home?", {"kind": "options", "options": ["HRT", "Supplements", "Lifestyle changes", "Nothing yet"]}
     elif "flash" in low:
-        reply, ui = "Ugh, sorry. Saved it. A small fan nearby and layers you can take off quickly can take the edge off when one hits. Did it wake you up?", {"kind": "options", "options": ["Yes", "No"]}
+        reply, ui = "Ugh, the night ones are the worst. Layers you can throw off fast and a fan nearby can take the edge off. Did it wake you up?", {"kind": "options", "options": ["Yes", "No"]}
+        saved = ["hot flashes 7/10"]
         source = {"site": "NHS", "title": "Things you can do to help symptoms", "url": "https://www.nhs.uk/conditions/menopause-and-perimenopause/things-you-can-do/"}
     elif "sweat" in low:
-        reply, ui = "Ugh, that's rough. A few members found a fan by the bed really helps. Did they wake you up?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
+        saved = ["night sweats"]
+        reply, ui = "Night sweats are miserable. A few members swear by a fan by the bed. Did they wake you up?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
         idea = card(TIPS[0], u)
     elif "sleep" in low:
-        reply, ui = "That sounds exhausting. Did you wake up hot or sweaty?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
+        saved = ["poor sleep"]
+        reply, ui = "Rough night. Was it waking up hot, or just lying there wide awake?", {"kind": "options", "options": ["Yes, a few times", "Once", "Not really"]}
     elif "symptom" in low or "else" in low:
         reply, ui = "Anything else today? Tap any that fit.", {"kind": "multi", "options": ["Headache", "Brain fog", "Joint pain", "Mood swings", "Bloating"]}
     elif "/10" in low or low.strip().isdigit():
-        reply, ui = "Thanks, noted. Try a warm heat pad and an easy evening if you can.", None
+        saved = ["updated to " + (low.strip().split("/")[0] or "5") + "/10"]
+        reply, ui = "That's a lot to carry around all day. A warm heat pad and an easy evening might help if you can swing it.", None
     else:
-        reply, ui = "Oof, that sounds rough. I've noted it for today. How strong was it, 1 to 10?", {"kind": "scale", "low": "Barely there", "high": "Worst ever"}
+        reply, ui = "Oof. How strong was it, 1 to 10?", {"kind": "scale", "low": "Barely there", "high": "Worst ever"}
     h.send_response(200); h.send_header("Content-Type", "application/x-ndjson"); h.end_headers()
     def send(o): h.wfile.write((json.dumps(o) + "\n").encode()); h.wfile.flush()
     send({"t": "round"}); time.sleep(0.6)
@@ -230,6 +235,7 @@ def chat_stream(h, body):
     if ui: m["ui"] = ui
     if idea: m["idea"] = idea
     if source: m["source"] = source
+    if saved: m["saved"] = saved
     u["transcript"] += [{"from": "you", "text": text, "at": at}, m]
     send({"t": "done", "reply": reply, "user": view(u)})
 
