@@ -118,5 +118,13 @@ const day = n => `2026-11-0${n}`;
   check(/Harsh \(you used it 2 messages ago/.test(ctx), 'and counts back from there');
   check(Object.values(SOURCES).every(x => /^https:\/\//.test(x.url) && x.site && x.title), 'every source has a site, title and https link');
 
+  // Every kind of tap-to-answer button still works through the chat loop (the 1-10 scale has no options list)
+  for (const qr of [{ kind: 'scale', low_label: 'Mild', high_label: 'Strong' }, { kind: 'options', options: ['Yes', 'No'] }, { kind: 'multi', options: STORY_FIELDS[3][3].options }]) {
+    let n = 0, gotWhy = null;
+    const fake = async () => (++n === 1 ? { stop_reason: 'tool_use', content: [{ type: 'tool_use', id: 'q', name: 'show_quick_replies', input: qr }] } : { stop_reason: 'end_turn', content: [{ type: 'text', text: 'ok' }] });
+    const r = await handleIncoming(freshUser(), 'hi', today, { claude: fake, model: 'x', effort: 'low', channel: 'app', onQuickReplies: () => {}, onWhy: w => { gotWhy = w; } }).catch(e => 'CRASH ' + e.message);
+    check(r === 'ok' && (qr.kind === 'multi' ? gotWhy && gotWhy.site === 'NHS' : !gotWhy), `${qr.kind} buttons work${qr.kind === 'multi' ? ' and a story question gets its why-line' : ''}`);
+  }
+
   log(fail ? `${fail} FAILED` : 'ALL PASSED');
 })().catch(e => log('CRASH', String(e), e.stack));

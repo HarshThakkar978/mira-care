@@ -556,7 +556,7 @@ export async function handleIncoming(user, text, today, deps) {
           const qr = cleanQuickReplies(t.input);
           if (qr && deps.onQuickReplies) deps.onQuickReplies(qr);
           // Cura is asking a story question: show why it's asked, with its source.
-          const sq = qr && STORY_FIELDS.find(f => f[3].options.join('|') === qr.options.join('|'));
+          const sq = qr && qr.options && STORY_FIELDS.find(f => f[3].options.join('|') === qr.options.join('|')); // scale buttons have no options
           if (sq && deps.onWhy) deps.onWhy(sq[4]);
           return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(qr ? { ok: true, shown: true } : { ok: false, error: 'Need kind scale, or 2+ options.' }), is_error: !qr };
         }
