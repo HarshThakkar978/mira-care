@@ -6,16 +6,19 @@
     set(k, v) { try { localStorage.setItem(k, v); } catch {} },
     del(k) { try { localStorage.removeItem(k); } catch {} }
   };
-  // Cura moved from mira-care.vercel.app to curadaily.vercel.app. The old address sends people on with their
-  // device code (so their data comes too), their theme and whether they've seen the tour.
-  const OLD_HOST = 'mira-care.vercel.app', NEW_HOST = 'curadaily.vercel.app';
-  if (location.hostname === OLD_HOST) {
+  // Cura's home is curadaily.com (before: mira-care.vercel.app, then curadaily.vercel.app). The old addresses send
+  // people on with their device code (so their data comes too), their theme and whether they've seen the tour.
+  // A Home Screen app can't move itself (leaving its address would open a browser inside it), so it keeps working
+  // where it is and shows a one-time note on how to re-add Cura from the new address.
+  const OLD_HOSTS = ['mira-care.vercel.app', 'curadaily.vercel.app'], NEW_HOST = 'curadaily.com';
+  const onOldHost = OLD_HOSTS.includes(location.hostname);
+  const moveLink = () => {
     const q = new URLSearchParams({ moved: '1' });
     const carry = { device: ID_KEY, theme: THEME_KEY, ob: OB_KEY, acct: ACCT_KEY }; // not the install tip: they need to re-add Cura to the Home Screen
     for (const [param, key] of Object.entries(carry)) { const v = store.get(key); if (v) q.set(param, v); }
-    location.replace(`https://${NEW_HOST}${location.pathname}?${q}${location.hash}`);
-    return;
-  }
+    return `https://${NEW_HOST}${location.pathname}?${q}${location.hash}`;
+  };
+  if (onOldHost && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) { location.replace(moveLink()); return; }
   const arrived = new URLSearchParams(location.search);
   if (arrived.get('moved')) {
     for (const [param, key] of [['theme', THEME_KEY], ['ob', OB_KEY], ['acct', ACCT_KEY]]) if (arrived.get(param)) store.set(key, arrived.get(param));
@@ -1209,7 +1212,7 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml }[ui.sheet] || meSheetHtml)()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml, moved: movedSheetHtml }[ui.sheet] || meSheetHtml)()}</div>`;
     if (wasOpen) root.querySelector('.sheet').scrollTop = top; // a redraw keeps your place in the sheet
     else root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
@@ -1410,6 +1413,12 @@
       <p class="ob-text">A few quick questions about your perimenopause so far: when the changes started, your periods, what you've tried. Cura uses it to tailor her tips to you and find you a Circle of women going through the same thing.</p>
       <div class="story-perks"><span>⏱️ About 3 min</span><span>🎙️ Talk or type</span><span>👋 Skip anything</span></div></div>
       <div class="story-actions"><button class="btn primary" data-action="story-go">Let's do it</button><button class="btn ghost" data-action="story-later">Maybe later</button></div>`;
+  }
+  function movedSheetHtml() {
+    return `<div class="ob"><div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
+      <h2 id="sheetTitle" class="ob-title">Cura has a new home</h2>
+      <p class="ob-text">Cura now lives at <b>${NEW_HOST}</b>. This app keeps working, but for the newest version, open the new address and add it to your Home Screen again. Everything you've told Cura comes with you.</p></div>
+      <div class="story-actions"><a class="btn primary" href="${esc(moveLink())}" target="_blank" rel="noopener">Open ${NEW_HOST}</a><button class="btn ghost" data-action="sheet-close">Not now</button></div>`;
   }
   function storyCard() {
     if (!storyWaiting()) return '';
@@ -1730,6 +1739,8 @@
   // ---------- Start ----------
   render();
   if (arrived.get('moved')) setTimeout(() => toast(`Cura has a new home: ${NEW_HOST} 💚`), 600);
+  // Home Screen app on an old address: once, explain how to switch (it keeps working until they do).
+  if (onOldHost && !store.get('mira-moved-note')) setTimeout(() => { if (!ui.sheet) { store.set('mira-moved-note', '1'); ui.sheet = 'moved'; renderSheet(); } }, 1500);
   (async () => {
     try {
       const d = await api('load');
