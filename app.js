@@ -13,9 +13,10 @@
   const OLD_HOSTS = ['mira-care.vercel.app', 'curadaily.vercel.app'], NEW_HOST = 'curadaily.com';
   const onOldHost = OLD_HOSTS.includes(location.hostname);
   const moveLink = () => {
-    const q = new URLSearchParams({ moved: '1' });
+    const q = new URLSearchParams(location.search); // keeps a "?device=" link someone opened (Use on another device)
+    q.set('moved', '1');
     const carry = { device: ID_KEY, theme: THEME_KEY, ob: OB_KEY, acct: ACCT_KEY }; // not the install tip: they need to re-add Cura to the Home Screen
-    for (const [param, key] of Object.entries(carry)) { const v = store.get(key); if (v) q.set(param, v); }
+    for (const [param, key] of Object.entries(carry)) { const v = store.get(key); if (v && !q.get(param)) q.set(param, v); }
     return `https://${NEW_HOST}${location.pathname}?${q}${location.hash}`;
   };
   if (onOldHost && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) { location.replace(moveLink()); return; }
