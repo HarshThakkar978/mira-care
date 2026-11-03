@@ -85,7 +85,7 @@ const hoursSince = (iso, now) => (iso ? (now - new Date(iso)) / 3600000 : 0);
 
 // People who were already using Cura before "your story" launched aren't part of the timing test: they're asked
 // after their first message to Cura once it's live.
-export const STORY_LAUNCH = '2026-11-03T17:00:00.000Z';
+export const STORY_LAUNCH = '2026-11-03T16:15:00.000Z';
 const sentSinceLaunch = user => (user.transcript || []).some(m => m.from === 'you' && m.at >= STORY_LAUNCH);
 
 export function storyOfferDue(user, now = new Date()) {

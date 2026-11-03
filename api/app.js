@@ -29,8 +29,8 @@ const view = user => {
 };
 const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
-// "Your story" is still being shaped: on in preview copies, off on the live site until CURA_STORY=on is set in Vercel.
-const storyOn = () => process.env.CURA_STORY === 'on' || process.env.VERCEL_ENV !== 'production';
+// "Your story" (live since 2026-11-03).
+const storyOn = () => process.env.CURA_STORY !== 'off'; // set CURA_STORY=off in Vercel to hide it again
 // After Cura's reply: at most one extra message, the Circle invitation or the one "tell me your story" reminder.
 // It also marks the story invitation as due, which the app shows as a pop-up.
 const afterReply = key => async u => {

@@ -2,7 +2,7 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { handleIncoming, normalizeUser, localDate } from './mira.js';
 import { getUser, saveUser } from './store.js';
-import { storyTurn } from './story.js';
+import { storyTurn, storyActive, storyMissing } from './story.js';
 
 const env = name => process.env[name] || '';
 export const MODEL = () => env('MIRA_MODEL') || 'claude-sonnet-5-5';
@@ -50,6 +50,10 @@ export async function miraReply(key, text, channel = 'whatsapp', hooks = {}) {
   const at = new Date().toISOString();
   user.transcript = [...(user.transcript || []), { from: 'you', text, at }, { from: 'mira', text: reply, at, ...(quick ? { ui: quick } : {}), ...(idea ? { idea } : {}), ...(why ? { why } : source ? { source } : {}), ...(saved.length && channel === 'app' ? { saved: saved.slice(0, 4) } : {}) }].slice(-TRANSCRIPT_MAX);
   if (channel === 'app') storyTurn(user);
+  // Safety net for "your story": if Cura's reply didn't ask anything, the next question follows with its buttons,
+  // so the questions never stall halfway.
+  const next = channel === 'app' && storyActive(user) && !quick && !reply.includes('?') && storyMissing(user)[0];
+  if (next) user.transcript = [...user.transcript, { from: 'mira', at: new Date().toISOString(), kind: 'story', text: next[2], ui: next[3], why: next[4] }].slice(-TRANSCRIPT_MAX);
   if (idea) user.offers = { ...user.offers, [idea.id]: today() }; // not offered again for two weeks
   // Anything the app adds after Cura's reply (the Circle invitation).
   if (hooks.afterReply) { const extra = await hooks.afterReply(user).catch(e => { console.error('after reply failed', e); return null; }); if (extra) user.transcript = [...user.transcript, extra].slice(-TRANSCRIPT_MAX); }
