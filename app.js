@@ -543,7 +543,9 @@
       return `${sheetHead('Your story')}${rows.length
         ? `<dl class="story-list">${rows.map(([l, v]) => `<div><dt>${esc(l)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`
         : '<p class="card-sub">The background behind your symptoms: when it started, your periods, what you\'ve tried. It makes Cura\'s insights more personal and goes on your doctor summary.</p>'}
-        <button class="btn primary" data-action="story-go" style="width:100%">${rows.length ? 'Tell Cura more' : 'Tell Cura my story'}</button>`;
+        <button class="btn primary" data-action="story-go" style="width:100%">${rows.length ? 'Tell Cura more' : 'Tell Cura my story'}</button>
+        ${ui.preview ? `<div class="test-box"><p class="small"><b>Test copy only.</b> Pick when the "your story" pop-up should appear for you (group now: ${esc((user.story && user.story.arm) || 'not set')}).</p>
+          <div class="row"><button class="btn small soft" data-action="story-test" data-arm="early">After 2 messages</button><button class="btn small soft" data-action="story-test" data-arm="later">Next visit</button></div></div>` : ''}`;
     }
     if (kind === 'erase') return `${sheetHead('Erase everything')}<p class="card-sub">This deletes everything you've told Cura on this account, including your chat and Circle messages. It can't be undone.</p>
       <button class="btn danger" data-action="reset" style="width:100%">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button>`;
@@ -1143,26 +1145,49 @@
       <div class="dots-row" aria-hidden="true">${steps.map((_, i) => `<i class="${i === ui.ob ? 'on' : ''}"></i>`).join('')}</div>
       <div class="row">${ui.ob ? '<button class="btn ghost" data-action="ob-back">Back</button>' : '<span></span>'}<button class="btn primary ob-next" data-action="${last ? 'sheet-close' : 'ob-next'}">${next}</button></div>`;
   }
-  // Moves the tour one step (the buttons and swipes both use this). It never finishes the tour: that stays a button tap.
+  // Moves the tour one step (the buttons and swipes both use this): the current step slides out, the next slides in.
+  // It never finishes the tour: that stays a button tap.
+  let obMoving = false;
   function obGo(dir) {
-    const to = ui.ob + dir;
-    if (to < 0 || to > obSteps().length - 1) { const o = $('.sheet .ob'); if (o) { o.classList.remove('nudge'); void o.offsetWidth; o.classList.add('nudge'); } return; }
-    ui.ob = to; ui.obDir = dir > 0 ? 'next' : 'back'; renderSheet();
+    const to = ui.ob + dir, o = $('.sheet .ob');
+    if (obMoving || to < 0 || to > obSteps().length - 1) { if (o) springBack(o); return; }
+    const done = () => { obMoving = false; ui.ob = to; ui.obDir = dir > 0 ? 'next' : 'back'; renderSheet(); };
+    if (!o || matchMedia('(prefers-reduced-motion: reduce)').matches) return done();
+    obMoving = true;
+    o.style.transition = 'transform .2s cubic-bezier(.4,0,1,1), opacity .2s ease-in';
+    o.style.transform = `translateX(${dir > 0 ? -60 : 60}%)`; o.style.opacity = '0';
+    setTimeout(done, 190);
   }
-  // Swipe left for the next step, right for the previous one, like flipping through cards.
+  function springBack(o) {
+    o.style.transition = 'transform .35s cubic-bezier(.2,.9,.3,1.2), opacity .25s ease';
+    o.style.transform = ''; o.style.opacity = '';
+  }
+  // Swipe left for the next step, right for the previous one. The step follows the finger, like turning a card.
   let obTouch = null;
   document.addEventListener('touchstart', e => {
     const sheet = e.target.closest && e.target.closest('.sheet.welcome');
-    obTouch = sheet && e.touches.length === 1 && !e.target.closest('input, textarea, select, .g-btn') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
+    obTouch = sheet && !obMoving && e.touches.length === 1 && !e.target.closest('input, textarea, select, .g-btn') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(), drag: null } : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    const s = obTouch; if (!s || ui.sheet !== 'welcome') return;
+    const dx = e.touches[0].clientX - s.x, dy = e.touches[0].clientY - s.y;
+    if (s.drag === null && Math.abs(dx) + Math.abs(dy) > 8) s.drag = Math.abs(dx) > Math.abs(dy) * 1.2; // decide once: sideways swipe or a scroll
+    if (!s.drag) return;
+    const o = $('.sheet .ob'); if (!o) return;
+    const edge = (dx > 0 && ui.ob === 0) || (dx < 0 && ui.ob >= obSteps().length - 1);
+    const move = edge ? dx * 0.25 : dx; // stretchy at the first and last step
+    o.style.transition = 'none';
+    o.style.transform = `translateX(${move}px)`; o.style.opacity = String(1 - Math.min(0.6, Math.abs(move) / 500));
   }, { passive: true });
   document.addEventListener('touchend', e => {
     const s = obTouch; obTouch = null;
-    if (!s || ui.sheet !== 'welcome' || !e.changedTouches.length) return;
-    const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
-    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - s.t > 900) return; // a tap, a scroll, or a slow drag
-    obGo(dx < 0 ? 1 : -1);
+    if (!s || !s.drag || ui.sheet !== 'welcome' || !e.changedTouches.length) return;
+    const o = $('.sheet .ob');
+    const dx = e.changedTouches[0].clientX - s.x, speed = Math.abs(dx) / Math.max(1, Date.now() - s.t);
+    if (Math.abs(dx) > 80 || (Math.abs(dx) > 30 && speed > 0.45)) obGo(dx < 0 ? 1 : -1); // far enough, or a quick flick
+    else if (o) springBack(o);
   }, { passive: true });
-  document.addEventListener('touchcancel', () => { obTouch = null; }, { passive: true });
+  document.addEventListener('touchcancel', () => { obTouch = null; const o = $('.sheet .ob'); if (o) springBack(o); }, { passive: true });
   // Saves the tour's answers once they finish (or close it): the name, and the symptoms as their starting focus.
   function saveObName() {
     const name = (ui.obName || '').trim();
@@ -1457,6 +1482,10 @@
     if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
     else if (act === 'voice-start') startVoice(a.dataset.for);
     else if (act === 'story-go') startStory();
+    else if (act === 'story-test') {
+      guarded(async () => { setUser((await api('story-group', { arm: a.dataset.arm }, { keepUser: true })).user); ui.sheet = null; },
+        a.dataset.arm === 'early' ? 'Set. It pops up once you\'ve sent Cura 2 messages.' : 'Set. The pop-up comes when you open Cura tomorrow.');
+    }
     else if (act === 'story-later') {
       closeSheet(); toast("No problem. It's on your Today page whenever you're ready.");
       api('story-later', {}, { keepUser: true }).then(d => setUser(d.user)).catch(() => {});
@@ -1711,7 +1740,7 @@
       else if (ui.googleId && !user.account && hasData(user) && !store.get(ACCT_KEY) && !ui.sheet) { ui.sheet = 'account'; renderSheet(); }
       else if (wantsInstall() && hasData(user) && !ui.sheet) { ui.sheet = 'install'; renderSheet(); }
       maybeTips();
-      ui.voice = !!d.voice; ui.storyOn = !!d.story; addMics();
+      ui.voice = !!d.voice; ui.storyOn = !!d.story; ui.preview = !!d.preview; addMics();
       // Preview copies: ?group=early or ?group=later puts this test user in that "your story" timing group.
       const group = arrived.get('group');
       if (ui.storyOn && ['early', 'later'].includes(group) && !(user.story && user.story.startedAt)) {

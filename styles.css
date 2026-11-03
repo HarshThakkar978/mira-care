@@ -593,11 +593,12 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 .story-nudge .sn-go{font-size:22px;color:var(--brand-deep)}
 .ob-title{text-wrap:balance}
 /* Welcome tour: each step slides in from the side you swiped (or tapped) towards. */
-.ob.slide-next{animation:obnext .32s cubic-bezier(.2,.8,.2,1)}
-.ob.slide-back{animation:obback .32s cubic-bezier(.2,.8,.2,1)}
-.ob.nudge{animation:obnudge .3s ease}
-@keyframes obnext{from{transform:translateX(36px);opacity:0}to{transform:none;opacity:1}}
-@keyframes obback{from{transform:translateX(-36px);opacity:0}to{transform:none;opacity:1}}
-@keyframes obnudge{30%{transform:translateX(-8px)}60%{transform:translateX(5px)}}
+.ob.slide-next{animation:obnext .38s cubic-bezier(.2,.8,.2,1)}
+.ob.slide-back{animation:obback .38s cubic-bezier(.2,.8,.2,1)}
+@keyframes obnext{from{transform:translateX(55%);opacity:0}to{transform:none;opacity:1}}
+@keyframes obback{from{transform:translateX(-55%);opacity:0}to{transform:none;opacity:1}}
 .sheet.welcome{overflow-x:hidden;touch-action:pan-y}
-@media (prefers-reduced-motion:reduce){.ob.slide-next,.ob.slide-back,.ob.nudge{animation:none}}
+.sheet.welcome .ob{will-change:transform}
+@media (prefers-reduced-motion:reduce){.ob.slide-next,.ob.slide-back{animation:none}}
+.test-box{margin-top:16px;padding:12px;border:1.5px dashed var(--line);border-radius:14px}
+.test-box .row{gap:8px;justify-content:flex-start;margin-top:8px}

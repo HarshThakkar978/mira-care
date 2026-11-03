@@ -51,7 +51,7 @@ export async function POST(request) {
     if (action === 'load') {
       const user = await loadUser(key);
       const settings = await loadSettings().catch(() => ({}));
-      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen, voice: voiceConfigured(), story: storyOn() });
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen, voice: voiceConfigured(), story: storyOn(), preview: process.env.VERCEL_ENV !== 'production' });
     }
 
     if (action === 'chat') {
