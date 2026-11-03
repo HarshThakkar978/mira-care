@@ -12,7 +12,7 @@ import {
   displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings, toggleReaction
 } from './_lib/community.js';
 import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess, circleInvite } from './_lib/community-logic.js';
-import { storyOffer, storyStart } from './_lib/story.js';
+import { storyOffer, storyStart, storySeen, storyLater, storyReminder } from './_lib/story.js';
 import { transcribe, voiceConfigured } from './_lib/voice.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
@@ -31,8 +31,12 @@ const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 // "Your story" is still being shaped: on in preview copies, off on the live site until CURA_STORY=on is set in Vercel.
 const storyOn = () => process.env.CURA_STORY === 'on' || process.env.VERCEL_ENV !== 'production';
-// After Cura's reply: at most one extra message, the Circle invitation or the "tell me your story" offer.
-const afterReply = key => async u => circleInvite(u, await loadSettings()) || (storyOn() ? storyOffer(u, key) : null);
+// After Cura's reply: at most one extra message, the Circle invitation or the one "tell me your story" reminder.
+// It also marks the story invitation as due, which the app shows as a pop-up.
+const afterReply = key => async u => {
+  if (storyOn()) storyOffer(u, key);
+  return circleInvite(u, await loadSettings()) || (storyOn() ? storyReminder(u) : null);
+};
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
 export async function POST(request) {
@@ -76,12 +80,15 @@ export async function POST(request) {
       catch (e) { return json({ error: e.status ? e.message : "Couldn't turn that into text. Please try again." }, e.status || 500); }
     }
     if (action === 'story-offer') {
-      // Asked by the app when it opens or after a check-in; adds Cura's invitation once it's due for this person.
-      const msg = storyOn() ? storyOffer(user, key) : null;
-      if (!msg) return json({ offered: false });
-      user.transcript = [...user.transcript, msg].slice(-300);
+      // Asked by the app when it opens or after a check-in, for the "later" group coming back on another day.
+      const due = storyOn() && storyOffer(user, key);
+      if (due) await storeUser(key, user);
+      return json({ offered: !!due, user: view(user) });
+    }
+    if (action === 'story-seen' || action === 'story-later') {
+      if (action === 'story-seen') storySeen(user); else storyLater(user);
       await storeUser(key, user);
-      return json({ offered: true, user: view(user) });
+      return json({ user: view(user) });
     }
     if (action === 'story-start') {
       if (!storyOn()) return json({ error: 'Not available yet' }, 404);

@@ -80,10 +80,15 @@ export function symptomStats(user, todayStr, days = 30) {
 }
 
 // The anonymous summary Claude sees when sorting someone into a group.
-export const memberProfile = (user, todayStr) => ({
-  focus: (user.community.focus || []).map(canonSymptom),
-  last_30_days: symptomStats(user, todayStr)
-});
+// From "your story" (when they've shared it): their hardest symptoms and how far along the transition they are.
+const STAGE = { regular: 'periods still regular', changing: 'periods changing', skipping: 'skipping periods', stopped: 'periods stopped (12+ months)' };
+export const memberProfile = (user, todayStr) => {
+  const f = (user.story && user.story.fields) || {};
+  const out = { focus: (user.community.focus || []).map(canonSymptom), last_30_days: symptomStats(user, todayStr) };
+  if (Array.isArray(f.hardest_symptoms) && f.hardest_symptoms.length) out.hardest = f.hardest_symptoms.map(canonSymptom);
+  if (STAGE[f.periods]) out.stage = STAGE[f.periods];
+  return out;
+};
 
 // What a group has in common: how many members have each symptom and how strong it's been.
 export function groupSummary(group, usersByKey, todayStr) {
@@ -105,7 +110,8 @@ export function groupSummary(group, usersByKey, todayStr) {
 
 // Fallback when Claude can't be reached: the group sharing the most of this person's symptoms.
 export function nearestGroup(user, groups, summaries, todayStr) {
-  const mine = new Set([...(user.community.focus || []).map(canonSymptom), ...symptomStats(user, todayStr).map(s => s.name)]);
+  const hardest = ((user.story && user.story.fields && user.story.fields.hardest_symptoms) || []).map(canonSymptom);
+  const mine = new Set([...(user.community.focus || []).map(canonSymptom), ...hardest, ...symptomStats(user, todayStr).map(s => s.name)]);
   let best = groups[0], bestScore = -1;
   groups.forEach((g, i) => {
     const score = (summaries[i] || []).reduce((n, s) => n + (mine.has(s.name) ? s.members : 0), 0) - g.members.length * 0.01;

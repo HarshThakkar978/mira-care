@@ -1,6 +1,7 @@
 // Tests "your story": the A/B offer, saving answers, wrapping up, and Cura's source links (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/story.test.mjs
-import { storyArm, storyOffer, storyStart, saveStory, storyMissing, storyTurn, storyNote, storyLines, storyStats, STORY_FIELDS } from '../api/_lib/story.js';
+import { storyArm, storyOffer, storyStart, saveStory, storyMissing, storyTurn, storyNote, storyLines, storyStats, STORY_FIELDS, storyPopupDue, storySeen, storyLater, storyReminder } from '../api/_lib/story.js';
+import { memberProfile } from '../api/_lib/community-logic.js';
 import { handleIncoming, freshUser, normalizeUser, SOURCES } from '../api/_lib/mira.js';
 
 const log = (...a) => (globalThis.print || console.log)(a.map(x => (typeof x === 'string' ? x : JSON.stringify(x))).join(' '));
@@ -19,14 +20,23 @@ const day = n => `2026-11-0${n}`;
   // Offer timing
   const keyEarly = Array.from({ length: 50 }, (_, i) => `web-e-${i}`).find(k => storyArm(k) === 'early');
   const keyLater = Array.from({ length: 50 }, (_, i) => `web-l-${i}`).find(k => storyArm(k) === 'later');
-  const e = normalizeUser({ profile: { name: 'Ana' } });
-  const o1 = storyOffer(e, keyEarly);
-  check(o1 && o1.cta.action === 'story-start' && /more personal/.test(o1.text), 'early group is offered straight away');
-  check(storyOffer(e, keyEarly) === null, 'offered only once');
-  const l = normalizeUser({});
-  check(storyOffer(l, keyLater) === null && l.story.arm === 'later', 'later group: not before 3 check-in days');
-  l.checkins = [1, 2, 3].map(n => ({ id: 'c' + n, date: day(n), feeling: 'ok' }));
-  check(storyOffer(l, keyLater) !== null, 'later group: offered after 3 check-in days');
+  const said = n => Array.from({ length: n }, () => ({ from: 'you', text: 'hi', at: '2026-11-02T10:00:00Z' }));
+  const at = h => new Date(Date.parse('2026-11-02T10:00:00Z') + h * 3600000);
+  const e = normalizeUser({ profile: { name: 'Ana' }, createdAt: '2026-11-02T10:00:00Z', transcript: said(1) });
+  check(storyOffer(e, keyEarly, at(0)) === false, 'early group: not after the very first message');
+  e.transcript = said(2);
+  check(storyOffer(e, keyEarly, at(0)) === true && storyPopupDue(e), 'early group: invited after 2 messages, as a pop-up');
+  check(storyOffer(e, keyEarly, at(1)) === false, 'invited only once');
+  storySeen(e, at(0));
+  check(!storyPopupDue(e), 'pop-up shown once');
+  const l = normalizeUser({ createdAt: '2026-11-02T10:00:00Z', transcript: said(5) });
+  check(storyOffer(l, keyLater, at(3)) === false && l.story.arm === 'later', 'later group: not on the first day');
+  check(storyOffer(l, keyLater, at(22)) === true, 'later group: invited when they come back the next day');
+  storyLater(l, at(22));
+  check(storyReminder(l, at(30)) === null, '"Maybe later": no reminder straight away');
+  const rem = storyReminder(l, at(22 + 49));
+  check(rem && rem.cta.action === 'story-start', '"Maybe later": one reminder in the chat two days on');
+  check(storyReminder(l, at(22 + 100)) === null, 'and only one');
 
   // Starting and saving
   const u = normalizeUser({});
@@ -52,7 +62,11 @@ const day = n => `2026-11-0${n}`;
 
   // Stats for the admin page
   const st = storyStats([e, l, u, v, normalizeUser({})]);
-  check(st.early.offered >= 1 && st.later.offered === 1 && st.early.finished === 2, 'A/B counts by group');
+  check(st.early.offered >= 1 && st.later.offered === 1 && st.later.later === 1 && st.early.saw === 1 && st.early.finished === 2, 'A/B counts by group');
+
+  // The Circle sees their hardest symptoms and stage (anonymous)
+  const prof = memberProfile(u, today);
+  check(prof.stage === 'periods changing' && prof.hardest.includes('hot flashes'), 'Circle matching uses the story');
 
   // Cura's tools: background and a source link, through the real chat loop with a fake Claude
   const user = freshUser();

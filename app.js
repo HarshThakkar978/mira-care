@@ -269,6 +269,7 @@
     } catch (e) { ui.failed = text; toast(e.message); }
     ui.sending = false; ui.pending = ''; ui.live = '';
     if (route === 'chat') refreshThread();
+    setTimeout(showStoryPopup, 1800); // after they've had a moment to read Cura's reply
   }
 
   // ---------- Data views ----------
@@ -307,6 +308,7 @@
     return `<div class="page today-page">
       <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'short', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
       ${circleInviteCard()}
+      ${storyCard()}
       <div class="card week-card">
         <div class="row"><h2 class="card-title">This week</h2>${showedUp ? `<span class="pill peach">${plural(showedUp, 'check-in')} 🌟</span>` : `<button class="btn small soft" data-action="quick-log">Check in</button>`}</div>
         <div class="week" role="list">${days.map(x => `<div class="wday" role="listitem" aria-label="${esc(x.label)}"><span class="${x.today ? 'now' : ''}">${x.letter}</span><i class="${x.cls}${x.today ? ' today' : ''}"></i></div>`).join('')}</div>
@@ -1158,7 +1160,7 @@
     if (!open) { root.innerHTML = ''; return; }
     const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml }[ui.sheet] || meSheetHtml)()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml }[ui.sheet] || meSheetHtml)()}</div>`;
     if (wasOpen) root.querySelector('.sheet').scrollTop = top; // a redraw keeps your place in the sheet
     else root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
@@ -1335,10 +1337,32 @@
     try { await api('story-start'); } catch (e) { toast(e.message); }
     if (route === 'chat') { refreshThread(); setTimeout(() => $('#msgInput')?.focus(), 50); } else render();
   }
-  // Cura's invitation, once it's due (see story.js). New people get it after their first chat instead.
+  // The invitation (see story.js): a pop-up once it's their time, then a card on Today until they start.
+  const storyWaiting = () => !!(ui.storyOn && user.story && user.story.offeredAt && !user.story.startedAt);
   async function maybeStoryOffer() {
-    if (!ui.storyOn || !(user.transcript || []).length || (user.story && (user.story.offeredAt || user.story.startedAt))) return;
-    try { const d = await api('story-offer', {}, { keepUser: true }); if (d.offered) { setUser(d.user); if (route === 'chat' && !ui.sending) refreshThread(); } } catch {}
+    if (!ui.storyOn) return;
+    const s = user.story || {};
+    if (!s.offeredAt && !s.startedAt && (user.transcript || []).length) {
+      try { const d = await api('story-offer', {}, { keepUser: true }); if (d.offered) setUser(d.user); } catch {}
+    }
+    showStoryPopup();
+  }
+  function showStoryPopup() {
+    const s = user.story || {};
+    if (!storyWaiting() || s.popupAt || ui.sheet || ui.sending || $('#coach .coach-ring')) return;
+    ui.sheet = 'story'; renderSheet();
+    api('story-seen', {}, { keepUser: true }).then(d => setUser(d.user)).catch(() => {});
+  }
+  function storyInviteHtml() {
+    return `<div class="ob"><div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
+      <h2 id="sheetTitle" class="ob-title">Help Cura get to know you</h2>
+      <p class="ob-text">Tell Cura a little about how this started for you. She'll use it to make her tips fit you, and to find you a Circle of women going through the same thing.</p>
+      <div class="story-perks"><span>⏱️ About 3 min</span><span>🎙️ Talk or type</span><span>👋 Skip anything</span></div></div>
+      <div class="story-actions"><button class="btn primary" data-action="story-go">Let's do it</button><button class="btn ghost" data-action="story-later">Maybe later</button></div>`;
+  }
+  function storyCard() {
+    if (!storyWaiting()) return '';
+    return `<button class="card story-nudge" data-action="story-go"><span class="sn-ico" aria-hidden="true">💜</span><span class="sn-text"><b>Help Cura get to know you</b><span>3 minutes · talk or type</span></span><span class="sn-go" aria-hidden="true">›</span></button>`;
   }
   const STORY_LABELS = [['periods', 'Periods'], ['last_period', 'Last period'], ['symptoms_started', 'Symptoms started'], ['hardest_symptoms', 'Hardest symptoms'], ['tried', 'Tried so far'], ['medical', 'Medical background'], ['family', 'Family history'], ['hopes', 'Wants help with'], ['age', 'Age']];
   const PERIODS_LABEL = { regular: 'Still regular', changing: 'Changing (length varies by a week or more)', skipping: 'Skipping (60+ days between some)', stopped: 'Stopped (12+ months)', not_sure: 'Not sure', not_applicable: "Can't tell (hysterectomy, IUD, pill or similar)" };
@@ -1412,6 +1436,10 @@
     if (act === 'retry') { const t = ui.failed; ui.failed = ''; sendMessage(t); }
     else if (act === 'voice-start') startVoice(a.dataset.for);
     else if (act === 'story-go') startStory();
+    else if (act === 'story-later') {
+      closeSheet(); toast("No problem. It's on your Today page whenever you're ready.");
+      api('story-later', {}, { keepUser: true }).then(d => setUser(d.user)).catch(() => {});
+    }
     else if (act === 'me-name-save') {
       const name = ($('#meName')?.value || '').trim();
       if (!name) { toast('Add your first name'); return; }

@@ -580,3 +580,15 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 .story-list div{display:grid;gap:2px}
 .story-list dt{font-size:12.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
 .story-list dd{margin:0;font-size:15px;line-height:1.45}
+
+/* ---------- "Your story" invitation ---------- */
+.story-perks{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:4px 0 6px}
+.story-perks span{background:var(--surface-2);border-radius:999px;padding:6px 12px;font-size:13.5px;color:var(--ink)}
+.story-actions{display:flex;flex-direction:column;gap:6px;margin-top:18px}
+.story-actions .btn{width:100%}
+.story-nudge{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:var(--brand-soft);color:var(--ink);cursor:pointer}
+.story-nudge .sn-ico{font-size:24px;flex:0 0 auto}
+.story-nudge .sn-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}
+.story-nudge .sn-text span{font-size:13.5px;color:var(--muted)}
+.story-nudge .sn-go{font-size:22px;color:var(--brand-deep)}
+.ob-title{text-wrap:balance}

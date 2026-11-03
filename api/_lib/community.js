@@ -183,7 +183,7 @@ async function placeMember(key, user) {
 
 const PLACE_PROMPT = `You sort people going through perimenopause into small peer-support groups, so each person is with others dealing with similar symptoms at a similar intensity.
 
-A new member is joining. Pick the existing group that fits them best. Look first at the symptoms they chose to talk about (focus), then at what they've logged and how strong it's been. If no group is a close match, pick the one with the nearest symptoms: everyone must get a group.
+A new member is joining. Pick the existing group that fits them best. Look first at the symptoms they chose to talk about (focus) and, if given, the ones they called hardest, then at what they've logged and how strong it's been. If their stage is given (periods changing, skipping or stopped), a group of people at a similar stage is a better fit when symptoms match about equally. If no group is a close match, pick the one with the nearest symptoms: everyone must get a group.
 
 reason: one short, warm sentence to the new member about why this group fits them, e.g. "You're with others who've been having a lot of night sweats and broken sleep." Don't mention anyone else's details or any numbers.`;
 
@@ -450,13 +450,13 @@ export const userForCalendar = async token => (/^[a-f0-9]{32}$/.test(token) ? rc
 // ---------- Daily: tidy up, regroup, question of the day ----------
 const REGROUP_PROMPT = `You look after the small peer-support groups in Cura, an app for people going through perimenopause. Each person should be with others dealing with similar symptoms at a similar intensity, so what they share is relevant to each other.
 
-Below are the current groups and an anonymous summary of each member: the symptoms they chose to talk about (focus) and what they've logged in the last 30 days (days noticed, average and peak intensity out of 10).
+Below are the current groups and an anonymous summary of each member: the symptoms they chose to talk about (focus), the ones they told Cura are hardest and their stage when they've shared their story, and what they've logged in the last 30 days (days noticed, average and peak intensity out of 10).
 
 Decide how the groups should look today:
 - Keep things stable. People get to know their group, so only move someone when it clearly helps them.
 - Split a group when it has more than 12 members, or when it has 8 or more and clearly holds different symptom profiles (for example mostly sleep and night sweats vs mostly mood and anxiety). Groups should end up with 4-12 members.
 - Move the members of a group with fewer than 3 people into the closest group.
-- Match on focus symptoms first, then logged symptoms and intensity. If someone doesn't closely match anyone, put them with the nearest symptoms; nobody is ever left out.
+- Match on focus and hardest symptoms first, then logged symptoms and intensity; when those match about equally, keep people at a similar stage (periods changing, skipping or stopped) together. If someone doesn't closely match anyone, put them with the nearest symptoms; nobody is ever left out.
 - With fewer than ${ONE_GROUP_BELOW} members in total, everyone stays in one group.
 Return every member exactly once. Keep an existing group's id when it continues (you may update its name and focus to fit its members); use id "new" for a new group.
 name: 2-5 friendly words naming what the group shares, e.g. "Sleep & night sweats". focus: one short sentence describing who it's for.

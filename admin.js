@@ -50,10 +50,10 @@
   function storyCard(st) {
     if (!st) return '';
     const pct = (n, d) => (d ? `${Math.round(n / d * 100)}%` : '–');
-    const row = (label, g) => `<tr><td>${label}</td><td class="num">${g.offered}</td><td class="num">${g.started} (${pct(g.started, g.offered)})</td><td class="num">${g.finished} (${pct(g.finished, g.offered)})</td><td class="num">${g.started ? (g.fields / Math.max(1, g.started)).toFixed(1) : '–'}</td></tr>`;
-    return `<div class="card"><div class="row"><h2 class="card-title">"Your story" timing test</h2><span class="small muted">Half see it right away, half after 3 check-in days</span></div>
-      <table><thead><tr><th>Group</th><th class="num">Offered</th><th class="num">Started</th><th class="num">Finished</th><th class="num">Answers each</th></tr></thead>
-      <tbody>${row('Right away', st.early)}${row('After 3 days', st.later)}</tbody></table></div>`;
+    const row = (label, g) => `<tr><td>${label}</td><td class="num">${g.offered}</td><td class="num">${g.saw || 0}</td><td class="num">${g.later || 0}</td><td class="num">${g.started} (${pct(g.started, g.offered)})</td><td class="num">${g.finished} (${pct(g.finished, g.offered)})</td><td class="num">${g.started ? (g.fields / Math.max(1, g.started)).toFixed(1) : '–'}</td></tr>`;
+    return `<div class="card"><div class="row"><h2 class="card-title">"Your story" timing test</h2><span class="small muted">Half are asked after their first 2 messages, half when they come back another day</span></div>
+      <table><thead><tr><th>Group</th><th class="num">Invited</th><th class="num">Saw pop-up</th><th class="num">"Maybe later"</th><th class="num">Started</th><th class="num">Finished</th><th class="num">Answers each</th></tr></thead>
+      <tbody>${row('After 2 messages', st.early)}${row('Next visit', st.later)}</tbody></table></div>`;
   }
   function renderList() {
     const s = data.stats;

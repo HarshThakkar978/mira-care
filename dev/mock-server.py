@@ -114,14 +114,19 @@ def handle(body):
         time.sleep(1.2)
         return {"text": "Hot flashes again last night, maybe a seven, and I woke up twice."}
     if a == "story-offer":
+        # Like the real server: invited after 2 messages (everyone, for local testing); the app shows a pop-up.
         st = u.setdefault("story", {})
-        if not u["transcript"] or st.get("offeredAt") or st.get("startedAt"): return {"offered": False}
-        st["arm"] = "early"; st["offeredAt"] = now().isoformat()
-        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story-offer", "text": "Quick one 💜 I'm learning to give you more personal insights. Would you tell me a bit about your story so far, like when this started and what you've tried? It takes about 3 minutes, and you can talk instead of typing.", "cta": {"label": "Tell my story", "action": "story-start"}})
+        sent = sum(1 for m in u["transcript"] if m["from"] == "you")
+        if st.get("offeredAt") or st.get("startedAt") or sent < 2: return {"offered": False, "user": view(u)}
+        st["offeredAt"] = now().isoformat()
         return {"offered": True, "user": view(u)}
+    if a in ("story-seen", "story-later"):
+        st = u.setdefault("story", {}); st["popupAt"] = st.get("popupAt") or now().isoformat()
+        if a == "story-later": st["snoozedAt"] = now().isoformat()
+        return {"user": view(u)}
     if a == "story-start":
         st = u.setdefault("story", {}); st["startedAt"] = now().isoformat(); st.setdefault("fields", {})
-        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 In your own words, how did this all start, and what has it been like since? Anything helps: your periods, the symptoms that bother you most, things you've tried. Tap the mic and just talk if that's easier."})
+        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 So, how did it all start, and what's it been like since? Periods, the symptoms that bother you most, anything you've tried. Tap the mic and just talk if that's easier."})
         return {"user": view(u)}
     if a == "insight":
         return {"insight": "Hot flashes showed up on 3 nights this week, mostly around 6–8, and they often came with broken sleep."}
@@ -237,6 +242,8 @@ def chat_stream(h, body):
     if source: m["source"] = source
     if saved: m["saved"] = saved
     u["transcript"] += [{"from": "you", "text": text, "at": at}, m]
+    st = u.setdefault("story", {})
+    if os.environ.get("STORY", "on") == "on" and not st.get("offeredAt") and sum(1 for x in u["transcript"] if x["from"] == "you") >= 2: st["offeredAt"] = at
     send({"t": "done", "reply": reply, "user": view(u)})
 
 

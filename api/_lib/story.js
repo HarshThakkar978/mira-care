@@ -6,9 +6,9 @@
 // changed, gaps of 60+ days, 12 months without a period) and the symptom areas of the Menopause Rating Scale,
 // plus what they've tried, relevant medical background and what they want help with.
 //
-// A/B test on timing: half of people are offered it straight away ("early"), half once they've checked in on
-// 3 different days ("later"). The admin page compares how many start and finish in each group.
-import { checkinDays } from './community-logic.js';
+// A/B test on timing: half of people are invited after their first couple of messages ("early"), half when they
+// come back on another day ("later", 20+ hours after they started). The invitation is a pop-up in the app; if they
+// tap "Maybe later", Cura asks once more in the chat two days on. The admin page compares the two groups.
 
 export const STORY_FIELDS = [
   ['periods', 'how their periods are now'],
@@ -32,7 +32,7 @@ const FIELD_LABEL = {
 };
 const MAX_QUESTIONS = 8; // after this many story turns Cura wraps up, even if some things are still unknown
 
-export const freshStory = () => ({ arm: '', offeredAt: '', startedAt: '', completedAt: '', turns: 0, fields: {} });
+export const freshStory = () => ({ arm: '', offeredAt: '', popupAt: '', snoozedAt: '', remindedAt: '', startedAt: '', completedAt: '', turns: 0, fields: {} });
 
 // Stable 50/50 split by the person's storage key.
 export function storyArm(key) {
@@ -41,22 +41,41 @@ export function storyArm(key) {
   return h % 2 ? 'later' : 'early';
 }
 
-export const STORY_DAYS = 3;
-export function storyOfferDue(user) {
+export const EARLY_MESSAGES = 2; // "early": invited after this many messages to Cura
+export const LATER_HOURS = 20;   // "later": invited on a visit at least this long after they started
+export const REMIND_DAYS = 2;    // after "Maybe later", Cura asks once more in the chat this many days on
+const sentCount = user => (user.transcript || []).filter(m => m.from === 'you').length;
+// When they started using Cura: the earlier of their sign-up and first message (older accounts have no sign-up date).
+const startedAt = user => [user.createdAt, ((user.transcript || [])[0] || {}).at].filter(Boolean).sort()[0] || '';
+const hoursSince = (iso, now) => (iso ? (now - new Date(iso)) / 3600000 : 0);
+
+export function storyOfferDue(user, now = new Date()) {
   const s = user.story || {};
   if (s.offeredAt || s.startedAt) return false;
-  return s.arm === 'early' || checkinDays(user) >= STORY_DAYS;
+  return s.arm === 'early' ? sentCount(user) >= EARLY_MESSAGES : sentCount(user) >= 1 && hoursSince(startedAt(user), now) >= LATER_HOURS;
 }
 
-// Cura's invitation in chat (once). The wording frames it as making her insights more personal.
+// Marks the invitation as due when it's their time; the app then shows the pop-up. Returns true when newly due.
 export function storyOffer(user, key, now = new Date()) {
   user.story = { ...freshStory(), ...(user.story || {}) };
   if (!user.story.arm) user.story.arm = storyArm(key);
-  if (!storyOfferDue(user)) return null;
+  if (!storyOfferDue(user, now)) return false;
   user.story.offeredAt = now.toISOString();
+  return true;
+}
+export const storyPopupDue = user => !!(user.story && user.story.offeredAt && !user.story.popupAt && !user.story.startedAt);
+export function storySeen(user, now = new Date()) { if (user.story && !user.story.popupAt) user.story.popupAt = now.toISOString(); }
+export function storyLater(user, now = new Date()) { if (user.story) { user.story.popupAt = user.story.popupAt || now.toISOString(); user.story.snoozedAt = now.toISOString(); } }
+
+// After a reply: the one gentle reminder in the chat, for people who tapped "Maybe later" a couple of days ago.
+export function storyReminder(user, now = new Date()) {
+  const s = user.story || {};
+  if (!s.snoozedAt || s.remindedAt || s.startedAt || hoursSince(s.snoozedAt, now) < REMIND_DAYS * 24) return null;
+  s.remindedAt = now.toISOString();
+  const name = user.profile && user.profile.name ? ` ${user.profile.name}` : '';
   return {
     from: 'mira', at: now.toISOString(), kind: 'story-offer',
-    text: "Quick one 💜 Could you tell me how this all started for you? It helps me make my insights more personal. About 3 minutes, and you can just talk.",
+    text: `Hey${name}, whenever you have 3 minutes: I'd love to hear how this all started for you. It helps me tailor my tips to you and find you the right Circle. You can just talk.`,
     cta: { label: 'Tell my story', action: 'story-start' }
   };
 }
@@ -132,12 +151,15 @@ export function storyLines(user) {
 
 // For the admin page: how the two timing groups compare.
 export function storyStats(users) {
-  const out = { early: { people: 0, offered: 0, started: 0, finished: 0, fields: 0 }, later: { people: 0, offered: 0, started: 0, finished: 0, fields: 0 } };
+  const blank = () => ({ people: 0, offered: 0, saw: 0, later: 0, started: 0, finished: 0, fields: 0 });
+  const out = { early: blank(), later: blank() };
   for (const u of users) {
     const s = u.story; if (!s || !out[s.arm]) continue;
     const g = out[s.arm];
     g.people++;
     if (s.offeredAt) g.offered++;
+    if (s.popupAt) g.saw++;
+    if (s.snoozedAt) g.later++;
     if (s.startedAt) g.started++;
     if (s.completedAt) g.finished++;
     g.fields += STORY_FIELDS.length - storyMissing(u).length;
