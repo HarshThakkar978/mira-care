@@ -87,7 +87,9 @@ for name, msgs in SCENARIOS.items():
             d = call(dev, "chat", text=m)
             last = [x for x in d["user"]["transcript"] if x["from"] == "mira" and x.get("text") == d["reply"]][-1:] or [{}]
             ui, src, sv = last[0].get("ui"), last[0].get("source"), last[0].get("saved")
-            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + (f"\nBUTTONS: {ui}" if ui else "") + (f"\nSOURCE: {src['site']} · {src['title']}" if src else "") + (f"\nSAVED LINE: {', '.join(sv)}" if sv else "") + "\n")
+            tr = d["user"]["transcript"]; idx = max(i for i, x in enumerate(tr) if x["from"] == "mira" and x.get("text") == d["reply"])
+            extra = "".join(f"\nTHEN CURA: {x['text']}" + (f" [buttons: {x['ui']['options']}]" if x.get("ui") else "") + (f" [why: {x['why']['text']}]" if x.get("why") else "") for x in tr[idx + 1:])
+            print(f"USER: {m}\nCURA ({len(d['reply'].split())} words): {d['reply']}" + extra + (f"\nBUTTONS: {ui}" if ui else "") + (f"\nSOURCE: {src['site']} · {src['title']}" if src else "") + (f"\nSAVED LINE: {', '.join(sv)}" if sv else "") + "\n")
         u = d["user"]
         print("SAVED symptoms:", [(s["name"], s.get("severity"), s.get("impact"), s["date"]) for s in u["symptoms"]])
         print("SAVED periods:", [c["date"] for c in u["cycleStarts"]], "| checkins:", [c["feeling"] for c in u["checkins"]], "| name:", u["profile"]["name"])
