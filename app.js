@@ -161,7 +161,8 @@
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
       const tail = !next || next.from !== m.from || new Date(next.at) - new Date(m.at) > 3600000;
       html += `<div class="msg ${m.from === 'you' ? 'me' : 'them'}${tail ? ' tail' : ''}${i >= fresh ? ' pop' : ''}">${fmtMsg(m.text)}</div>`;
-      if (m.saved || m.source) html += `<div class="msg-meta${i >= fresh ? ' pop' : ''}">${m.saved && m.saved.length ? `<span class="msg-saved">${CHECK_SVG}Saved: ${esc(m.saved.join(', '))}</span>` : ''}${m.source ? `<a class="msg-src" href="${esc(m.source.url)}" target="_blank" rel="noopener">${BOOK_SVG}${esc(m.source.site)} · ${esc(m.source.title)}</a>` : ''}</div>`;
+      const why = m.why && m.why.text ? `<span class="msg-why">${INFO_SVG}<span>Why I ask: ${esc(m.why.text)}${m.why.url ? ` <a href="${esc(m.why.url)}" target="_blank" rel="noopener">${esc(m.why.site)} ↗</a>` : ''}</span></span>` : '';
+      if (m.saved || m.source || why) html += `<div class="msg-meta${i >= fresh ? ' pop' : ''}">${why}${m.saved && m.saved.length ? `<span class="msg-saved">${CHECK_SVG}Saved: ${esc(m.saved.join(', '))}</span>` : ''}${m.source ? `<a class="msg-src" href="${esc(m.source.url)}" target="_blank" rel="noopener">${BOOK_SVG}${esc(m.source.site)} · ${esc(m.source.title)}</a>` : ''}</div>`;
       if (m.idea) html += ideaCardHtml(m.idea, true);
       const ctaDone = (m.cta && m.cta.route === 'community' && joined()) || (m.cta && m.cta.action === 'story-start' && user.story && user.story.startedAt);
       if (m.cta && !ctaDone) html += m.cta.action
@@ -1258,6 +1259,7 @@
   const voiceMode = () => (ui.voice && canRecord() ? 'server' : SpeechRec && !isStandalone() ? 'browser' : '');
   const MIC_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11a6.5 6.5 0 0 0 13 0M12 17.5V21"/></svg>';
   const CHECK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+  const INFO_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 7.5v.5"/></svg>';
   const BOOK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v15H6.5A2.5 2.5 0 0 0 4 20.5zM4 20.5A2.5 2.5 0 0 0 6.5 23H20v-5"/></svg>';
   const micBtn = forId => (voiceMode() ? `<button class="send mic" type="button" data-action="voice-start" data-for="${forId}" aria-label="Talk instead of typing">${MIC_SVG}</button>` : '');
   // The server says whether its transcription is on only after the first paint; add the mic without a redraw (keeps typed text).

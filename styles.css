@@ -602,3 +602,7 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 @media (prefers-reduced-motion:reduce){.ob.slide-next,.ob.slide-back{animation:none}}
 .test-box{margin-top:16px;padding:12px;border:1.5px dashed var(--line);border-radius:14px}
 .test-box .row{gap:8px;justify-content:flex-start;margin-top:8px}
+/* "Why I ask" under a story question */
+.msg-why{display:inline-flex;align-items:flex-start;gap:4px;padding:2px 0;flex-basis:100%;color:var(--muted)}
+.msg-why a{color:var(--brand-deep);text-decoration:none;font-weight:600;white-space:nowrap}
+.msg-why svg{color:var(--brand)}

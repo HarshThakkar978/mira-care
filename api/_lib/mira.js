@@ -506,7 +506,7 @@ function savedLabel(name, input, result) {
   return '';
 }
 
-// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onSource?: (source) => void, onSaved?: (label) => void,
+// deps: { claude: (params) => Promise<Message>, model, effort, fallbacks, channel: 'app' | 'whatsapp', onRound?: () => void, onSource?: (source) => void, onSaved?: (label) => void, onWhy?: (why) => void,
 //         onQuickReplies?: (qr) => void, note?: string (extra context), ideas?: idea cards, onIdea?: (idea) => void }
 // Mutates `user` (state + history) and returns the reply text.
 export async function handleIncoming(user, text, today, deps) {
@@ -555,6 +555,9 @@ export async function handleIncoming(user, text, today, deps) {
         if (t.name === QUICK_REPLY_TOOL.name) {
           const qr = cleanQuickReplies(t.input);
           if (qr && deps.onQuickReplies) deps.onQuickReplies(qr);
+          // Cura is asking a story question: show why it's asked, with its source.
+          const sq = qr && STORY_FIELDS.find(f => f[3].options.join('|') === qr.options.join('|'));
+          if (sq && deps.onWhy) deps.onWhy(sq[4]);
           return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(qr ? { ok: true, shown: true } : { ok: false, error: 'Need kind scale, or 2+ options.' }), is_error: !qr };
         }
         if (t.name === IDEA_TOOL.name) {

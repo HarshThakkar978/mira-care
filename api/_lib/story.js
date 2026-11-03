@@ -19,25 +19,38 @@
 //   thyroid, cancer treatment); mother's age at menopause (timing runs in families);
 // - age: UK NICE guidance recognises perimenopause from symptoms after 45; before 40 it's worth a doctor's look;
 // - what they want help with, last, so Cura knows what to focus on.
+// Each question shows a short "why I ask" line under it, with the trusted page it comes from (checked by hand).
+const NHS = 'https://www.nhs.uk/conditions/menopause-and-perimenopause/';
+const NICE = 'https://www.nice.org.uk/guidance/ng23/chapter/Recommendations';
+const why = (text, site, title, url) => ({ text, site, title, url });
 export const STORY_FIELDS = [
   ['symptoms_started', 'when they first noticed changes', 'When did you first notice changes you think might be perimenopause, like hot flashes, poorer sleep, mood changes or different periods?',
-    { kind: 'options', options: ['In the last 6 months', '6–12 months ago', '1–2 years ago', 'Over 2 years ago', 'Not sure'] }],
+    { kind: 'options', options: ['In the last 6 months', '6–12 months ago', '1–2 years ago', 'Over 2 years ago', 'Not sure'] },
+    why('Perimenopause can start years before periods stop, so this shows where you might be.', 'NHS', 'Menopause and perimenopause', NHS)],
   ['periods', 'how their periods are now', 'How are your periods now, compared with a few years ago?',
-    { kind: 'options', options: ['Still regular', 'Timing varies by a week+', 'Gaps of 2+ months', 'Stopped for a year+', 'Hard to say'] }],
+    { kind: 'options', options: ['Still regular', 'Timing varies by a week+', 'Gaps of 2+ months', 'Stopped for a year+', 'Hard to say'] },
+    why('Doctors recognise perimenopause from changes in your cycle along with your symptoms.', 'NICE', 'Menopause guidance', NICE)],
   ['last_period', 'when their last period started', 'When did your last period start?',
-    { kind: 'options', options: ['This month', '1–2 months ago', '3–11 months ago', 'Over a year ago', 'Not sure'] }],
+    { kind: 'options', options: ['This month', '1–2 months ago', '3–11 months ago', 'Over a year ago', 'Not sure'] },
+    why('Menopause is reached after 12 months without a period.', 'NICE', 'Menopause guidance', NICE)],
   ['hardest_symptoms', 'which symptoms affect them most', 'Which of these affect your day-to-day life the most? Pick any.',
-    { kind: 'multi', options: ['Hot flashes', 'Night sweats', 'Trouble sleeping', 'Mood or anxiety', 'Brain fog', 'Aches and pains', 'Heavy or painful periods', 'Low energy'] }],
+    { kind: 'multi', options: ['Hot flashes', 'Night sweats', 'Trouble sleeping', 'Mood or anxiety', 'Brain fog', 'Aches and pains', 'Heavy or painful periods', 'Low energy'] },
+    why("Perimenopause is different for everyone, so Cura starts with what affects you most.", 'NHS', 'Symptoms', NHS + 'symptoms/')],
   ['tried', "what they've tried and whether it helped", 'What have you tried for them so far? Pick any.',
-    { kind: 'multi', options: ['Nothing yet', 'Sleep or diet changes', 'Exercise', 'Supplements', 'HRT', 'Other medicine', 'Saw a doctor about it'] }],
+    { kind: 'multi', options: ['Nothing yet', 'Sleep or diet changes', 'Exercise', 'Supplements', 'HRT', 'Other medicine', 'Saw a doctor about it'] },
+    why("So Cura doesn't repeat ideas, and your doctor can see what's helped.", 'NHS', 'Treatment', NHS + 'treatment/')],
   ['medical', 'medical background that affects the picture', 'Do any of these apply to you? Pick any.',
-    { kind: 'multi', options: ['Womb or ovary surgery', 'Hormonal IUD, pill or implant', 'Thyroid condition', 'Cancer treatment', 'Other regular medicines', 'None of these'] }],
+    { kind: 'multi', options: ['Womb or ovary surgery', 'Hormonal IUD, pill or implant', 'Thyroid condition', 'Cancer treatment', 'Other regular medicines', 'None of these'] },
+    why('A hysterectomy or hormonal contraception can hide period changes, so doctors go by symptoms instead.', 'NICE', 'Menopause guidance', NICE)],
   ['family', "their mother's age at menopause", 'Do you know roughly how old your mum was when her periods stopped?',
-    { kind: 'options', options: ['Before 45', '45–50', 'After 50', "Don't know"] }],
+    { kind: 'options', options: ['Before 45', '45–50', 'After 50', "Don't know"] },
+    why('Early menopause is more likely if it runs in your family.', 'NHS', 'Early menopause', 'https://www.nhs.uk/conditions/early-menopause/')],
   ['age', 'their age', 'And how old are you?',
-    { kind: 'options', options: ['Under 40', '40–44', '45–49', '50–54', '55 or over'] }],
+    { kind: 'options', options: ['Under 40', '40–44', '45–49', '50–54', '55 or over'] },
+    why('Menopause usually happens between 45 and 55, and age changes what doctors look for.', 'NHS', 'Menopause and perimenopause', NHS)],
   ['hopes', 'what they most want help with', 'Last one: what would you most like help with right now? Pick any.',
-    { kind: 'multi', options: ['Sleeping better', 'Fewer hot flashes', 'Feeling like myself', "Understanding what's happening", 'Talking to my doctor', 'Something else'] }]
+    { kind: 'multi', options: ['Sleeping better', 'Fewer hot flashes', 'Feeling like myself', "Understanding what's happening", 'Talking to my doctor', 'Something else'] },
+    why('So Cura focuses on what matters most to you.', '', '', '')]
 ];
 export const AGE_BANDS = ['Under 40', '40–44', '45–49', '50–54', '55 or over'];
 // How a tapped period answer maps to the saved stage.
@@ -70,16 +83,22 @@ const sentCount = user => (user.transcript || []).filter(m => m.from === 'you').
 const startedAt = user => [user.createdAt, ((user.transcript || [])[0] || {}).at].filter(Boolean).sort()[0] || '';
 const hoursSince = (iso, now) => (iso ? (now - new Date(iso)) / 3600000 : 0);
 
+// People who were already using Cura before "your story" launched aren't part of the timing test: they're asked
+// after their first message to Cura once it's live.
+export const STORY_LAUNCH = '2026-11-03T17:00:00.000Z';
+const sentSinceLaunch = user => (user.transcript || []).some(m => m.from === 'you' && m.at >= STORY_LAUNCH);
+
 export function storyOfferDue(user, now = new Date()) {
   const s = user.story || {};
   if (s.offeredAt || s.startedAt) return false;
+  if (s.arm === 'existing') return sentSinceLaunch(user);
   return s.arm === 'early' ? sentCount(user) >= EARLY_MESSAGES : sentCount(user) >= 1 && hoursSince(startedAt(user), now) >= LATER_HOURS;
 }
 
 // Marks the invitation as due when it's their time; the app then shows the pop-up. Returns true when newly due.
 export function storyOffer(user, key, now = new Date()) {
   user.story = { ...freshStory(), ...(user.story || {}) };
-  if (!user.story.arm) user.story.arm = storyArm(key);
+  if (!user.story.arm) user.story.arm = startedAt(user) && startedAt(user) < STORY_LAUNCH ? 'existing' : storyArm(key);
   if (!storyOfferDue(user, now)) return false;
   user.story.offeredAt = now.toISOString();
   return true;
@@ -109,9 +128,9 @@ export function storyStart(user, key, now = new Date()) {
   user.story.startedAt = user.story.startedAt || now.toISOString();
   user.story.completedAt = '';
   user.story.turns = 0;
-  const [, , ask, ui] = storyMissing(user)[0] || STORY_FIELDS[0];
+  const [, , ask, ui, reason] = storyMissing(user)[0] || STORY_FIELDS[0];
   return {
-    from: 'mira', at: now.toISOString(), kind: 'story',
+    from: 'mira', at: now.toISOString(), kind: 'story', why: reason,
     text: `Thank you 💜 Just a few short questions, one at a time. Skip any you like, or tap the mic to talk.\n\nFirst: ${ask.charAt(0).toLowerCase() + ask.slice(1)}`,
     ui
   };
@@ -182,7 +201,7 @@ export function storyLines(user) {
 // For the admin page: how the two timing groups compare.
 export function storyStats(users) {
   const blank = () => ({ people: 0, offered: 0, saw: 0, later: 0, started: 0, finished: 0, fields: 0 });
-  const out = { early: blank(), later: blank() };
+  const out = { early: blank(), later: blank(), existing: blank() };
   for (const u of users) {
     const s = u.story; if (!s || !out[s.arm]) continue;
     const g = out[s.arm];

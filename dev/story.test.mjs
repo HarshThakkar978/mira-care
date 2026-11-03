@@ -20,16 +20,16 @@ const day = n => `2026-11-0${n}`;
   // Offer timing
   const keyEarly = Array.from({ length: 50 }, (_, i) => `web-e-${i}`).find(k => storyArm(k) === 'early');
   const keyLater = Array.from({ length: 50 }, (_, i) => `web-l-${i}`).find(k => storyArm(k) === 'later');
-  const said = n => Array.from({ length: n }, () => ({ from: 'you', text: 'hi', at: '2026-11-02T10:00:00Z' }));
-  const at = h => new Date(Date.parse('2026-11-02T10:00:00Z') + h * 3600000);
-  const e = normalizeUser({ profile: { name: 'Ana' }, createdAt: '2026-11-02T10:00:00Z', transcript: said(1) });
+  const said = n => Array.from({ length: n }, () => ({ from: 'you', text: 'hi', at: '2026-11-05T10:00:00Z' }));
+  const at = h => new Date(Date.parse('2026-11-05T10:00:00Z') + h * 3600000);
+  const e = normalizeUser({ profile: { name: 'Ana' }, createdAt: '2026-11-05T10:00:00Z', transcript: said(1) });
   check(storyOffer(e, keyEarly, at(0)) === false, 'early group: not after the very first message');
   e.transcript = said(2);
   check(storyOffer(e, keyEarly, at(0)) === true && storyPopupDue(e), 'early group: invited after 2 messages, as a pop-up');
   check(storyOffer(e, keyEarly, at(1)) === false, 'invited only once');
   storySeen(e, at(0));
   check(!storyPopupDue(e), 'pop-up shown once');
-  const l = normalizeUser({ createdAt: '2026-11-02T10:00:00Z', transcript: said(5) });
+  const l = normalizeUser({ createdAt: '2026-11-05T10:00:00Z', transcript: said(5) });
   check(storyOffer(l, keyLater, at(3)) === false && l.story.arm === 'later', 'later group: not on the first day');
   check(storyOffer(l, keyLater, at(22)) === true, 'later group: invited when they come back the next day');
   storyLater(l, at(22));
@@ -37,6 +37,16 @@ const day = n => `2026-11-0${n}`;
   const rem = storyReminder(l, at(22 + 49));
   check(rem && rem.cta.action === 'story-start', '"Maybe later": one reminder in the chat two days on');
   check(storyReminder(l, at(22 + 100)) === null, 'and only one');
+
+  // People who used Cura before launch: their own group, asked after their first message once it's live
+  const old = normalizeUser({ createdAt: '2026-10-20T10:00:00Z', transcript: [{ from: 'you', text: 'hi', at: '2026-10-20T10:00:00Z' }] });
+  check(storyOffer(old, keyEarly, at(30)) === false && old.story.arm === 'existing', 'existing user: own group, not asked from old messages');
+  old.transcript.push({ from: 'you', text: 'hello again', at: '2026-11-04T09:00:00.000Z' });
+  check(storyOffer(old, keyEarly, at(30)) === true, 'existing user: asked after their first message once it is live');
+  const st0 = storyStats([old]); check(st0.existing.offered === 1 && st0.early.offered === 0, 'existing users kept out of the A/B numbers');
+  // why-lines: every question but the last links a trusted page
+  check(STORY_FIELDS.slice(0, -1).every(f => f[4].text && /^https:\/\/www\.(nhs\.uk|nice\.org\.uk)\//.test(f[4].url)), 'each question has a "why I ask" with a source');
+  check(storyStart(normalizeUser({}), keyEarly).why.site === 'NHS', 'the first question carries its why-line');
 
   // Starting and saving
   const u = normalizeUser({});

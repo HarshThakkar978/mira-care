@@ -51,7 +51,7 @@ SCENARIOS = {
     # Tapping the buttons all the way through, with one typed answer in the middle.
     "storytaps": [("action", "story-start"), "1–2 years ago", "Gaps of 2+ months", "1–2 months ago",
                   "Hot flashes, Trouble sleeping, Brain fog", "Supplements, Exercise", "magnesium helped my sleep a bit, exercise not really",
-                  "Thyroid condition", "45–50", "45–49", "Sleeping better, Talking to my doctor"],
+                  "Thyroid condition", "I'd rather not say", "45–49", "Sleeping better, Talking to my doctor"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),
