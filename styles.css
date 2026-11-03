@@ -583,7 +583,7 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 
 /* ---------- "Your story" invitation ---------- */
 .story-perks{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin:4px 0 6px}
-.story-perks span{background:var(--surface-2);border-radius:999px;padding:6px 12px;font-size:13.5px;color:var(--ink)}
+.story-perks span{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);border-radius:999px;padding:6px 12px;font-size:13.5px;color:var(--ink)}
 .story-actions{display:flex;flex-direction:column;gap:6px;margin-top:18px}
 .story-actions .btn{width:100%}
 .story-nudge{display:flex;align-items:center;gap:12px;width:100%;text-align:left;border:0;background:var(--brand-soft);color:var(--ink);cursor:pointer}

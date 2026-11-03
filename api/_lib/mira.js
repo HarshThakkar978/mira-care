@@ -1,7 +1,7 @@
 // Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
 // Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
 import { freshCommunity, addDays, daysBetween, whenLabel } from './community-logic.js';
-import { freshStory, saveStory, storyNote, PERIODS, STORY_FIELDS } from './story.js';
+import { freshStory, saveStory, storyNote, storyActive, PERIODS, STORY_FIELDS } from './story.js';
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
@@ -573,7 +573,8 @@ export async function handleIncoming(user, text, today, deps) {
         try { result = runTool(user, t.name, t.input, today); } catch (e) { result = { ok: false, error: String(e.message || e) }; }
         const line = t.name === 'get_my_history' ? '' : describeAction(t.name, t.input || {}, result, at);
         if (line) actions.push(line);
-        const label = result.ok === false ? '' : savedLabel(t.name, t.input || {}, result);
+        let label = result.ok === false ? '' : savedLabel(t.name, t.input || {}, result);
+        if (t.name === BACKGROUND_TOOL.name && storyActive(user)) label = ''; // mid-story the "why I ask" line is enough; "your story" shows when it's done
         if (label && deps.onSaved) deps.onSaved(label);
         return { type: 'tool_result', tool_use_id: t.id, content: JSON.stringify(result), is_error: result.ok === false };
       })
