@@ -120,6 +120,9 @@ def handle(body):
         if st.get("offeredAt") or st.get("startedAt") or sent < 2: return {"offered": False, "user": view(u)}
         st["offeredAt"] = now().isoformat()
         return {"offered": True, "user": view(u)}
+    if a == "story-group":
+        u["story"] = {**u.get("story", {}), "arm": body.get("arm"), "offeredAt": "", "popupAt": "", "snoozedAt": ""}
+        return {"user": view(u)}
     if a in ("story-seen", "story-later"):
         st = u.setdefault("story", {}); st["popupAt"] = st.get("popupAt") or now().isoformat()
         if a == "story-later": st["snoozedAt"] = now().isoformat()

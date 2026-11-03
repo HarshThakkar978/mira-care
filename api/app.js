@@ -85,6 +85,13 @@ export async function POST(request) {
       if (due) await storeUser(key, user);
       return json({ offered: !!due, user: view(user) });
     }
+    if (action === 'story-group') {
+      // Preview copies only: lets the team choose which timing group they test (link ending in ?group=early or ?group=later).
+      if (process.env.VERCEL_ENV === 'production' || !['early', 'later'].includes(body.arm)) return json({ error: 'Not available' }, 404);
+      user.story = { ...(user.story || {}), arm: body.arm, offeredAt: '', popupAt: '', snoozedAt: '', remindedAt: '' };
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
     if (action === 'story-seen' || action === 'story-later') {
       if (action === 'story-seen') storySeen(user); else storyLater(user);
       await storeUser(key, user);

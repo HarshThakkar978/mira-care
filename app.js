@@ -1138,10 +1138,31 @@
         ${ui.googleId ? `<p class="ob-or">or</p>${accountBlock()}` : ''}`}`
     }[step];
     const next = step === 'hello' ? (user.account ? 'Next' : 'Try it first') : last ? 'Start chatting' : ui.obSyms.length ? 'Next' : 'Skip for now';
-    return `<div class="ob">${body}</div>
+    const slide = ui.obDir ? ` slide-${ui.obDir}` : ''; ui.obDir = '';
+    return `<div class="ob${slide}">${body}</div>
       <div class="dots-row" aria-hidden="true">${steps.map((_, i) => `<i class="${i === ui.ob ? 'on' : ''}"></i>`).join('')}</div>
       <div class="row">${ui.ob ? '<button class="btn ghost" data-action="ob-back">Back</button>' : '<span></span>'}<button class="btn primary ob-next" data-action="${last ? 'sheet-close' : 'ob-next'}">${next}</button></div>`;
   }
+  // Moves the tour one step (the buttons and swipes both use this). It never finishes the tour: that stays a button tap.
+  function obGo(dir) {
+    const to = ui.ob + dir;
+    if (to < 0 || to > obSteps().length - 1) { const o = $('.sheet .ob'); if (o) { o.classList.remove('nudge'); void o.offsetWidth; o.classList.add('nudge'); } return; }
+    ui.ob = to; ui.obDir = dir > 0 ? 'next' : 'back'; renderSheet();
+  }
+  // Swipe left for the next step, right for the previous one, like flipping through cards.
+  let obTouch = null;
+  document.addEventListener('touchstart', e => {
+    const sheet = e.target.closest && e.target.closest('.sheet.welcome');
+    obTouch = sheet && e.touches.length === 1 && !e.target.closest('input, textarea, select, .g-btn') ? { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() } : null;
+  }, { passive: true });
+  document.addEventListener('touchend', e => {
+    const s = obTouch; obTouch = null;
+    if (!s || ui.sheet !== 'welcome' || !e.changedTouches.length) return;
+    const dx = e.changedTouches[0].clientX - s.x, dy = e.changedTouches[0].clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - s.t > 900) return; // a tap, a scroll, or a slow drag
+    obGo(dx < 0 ? 1 : -1);
+  }, { passive: true });
+  document.addEventListener('touchcancel', () => { obTouch = null; }, { passive: true });
   // Saves the tour's answers once they finish (or close it): the name, and the symptoms as their starting focus.
   function saveObName() {
     const name = (ui.obName || '').trim();
@@ -1451,8 +1472,8 @@
     else if (act === 'quick-log') openQuickLog(a.dataset.date);
     else if (act === 'sheet-close') closeSheet();
     else if (act === 'log-save') saveQuickLog();
-    else if (act === 'ob-next') { ui.ob++; renderSheet(); }
-    else if (act === 'ob-back') { ui.ob = Math.max(0, ui.ob - 1); renderSheet(); }
+    else if (act === 'ob-next') obGo(1);
+    else if (act === 'ob-back') obGo(-1);
     else if (act === 'show-welcome') { ui.ob = 0; ui.obSyms = null; ui.sheet = 'welcome'; renderSheet(); }
     else if (act === 'ob-time') {
       const hour = Number(a.dataset.hour); ui.obHour = hour;
@@ -1691,6 +1712,12 @@
       else if (wantsInstall() && hasData(user) && !ui.sheet) { ui.sheet = 'install'; renderSheet(); }
       maybeTips();
       ui.voice = !!d.voice; ui.storyOn = !!d.story; addMics();
+      // Preview copies: ?group=early or ?group=later puts this test user in that "your story" timing group.
+      const group = arrived.get('group');
+      if (ui.storyOn && ['early', 'later'].includes(group) && !(user.story && user.story.startedAt)) {
+        try { setUser((await api('story-group', { arm: group }, { keepUser: true })).user); toast(`Test mode: "your story" group set to ${group}`); } catch {}
+        history.replaceState(null, '', location.pathname + location.hash);
+      }
       if (!ui.sheet) maybeStoryOffer();
     } catch (e) { toast('Offline: showing your last saved data'); }
   })();
