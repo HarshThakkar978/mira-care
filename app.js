@@ -177,9 +177,15 @@
       ? `<div class="msg them tail live" id="live">${fmtMsg(ui.live)}</div>`
       : `<div class="typing" aria-label="Cura is typing"><i></i><i></i><i></i></div>`);
     else if (ui.failed) html += `<div class="msg me tail failed">${fmtMsg(ui.failed)}</div><div class="msg-status error" data-action="retry">Not delivered · Tap to try again</div>`;
-    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(msgs[msgs.length - 1]) || dailyAsk(msgs);
+    else if (msgs.length && msgs[msgs.length - 1].from === 'mira') html += quickRepliesHtml(pendingAsk(msgs)) || dailyAsk(msgs);
     else html += dailyAsk(msgs);
     return html;
+  }
+  // Cura's latest message with answer buttons since they last wrote, so a note she adds after her question
+  // (like the Circle invitation) doesn't hide the buttons.
+  function pendingAsk(msgs) {
+    for (let i = msgs.length - 1; i >= 0 && msgs[i].from === 'mira'; i--) if (msgs[i].ui) return msgs[i];
+    return {};
   }
   // Tap-to-answer buttons Cura attached to her latest question (scale, options or pick-several).
   function quickRepliesHtml(m) {
@@ -198,7 +204,7 @@
   }
   function chipsHtml() {
     const last = allMsgs().slice(-1)[0];
-    if (last && last.from === 'mira' && last.ui && !ui.pending) return ''; // Cura's own answer buttons take over
+    if (last && last.from === 'mira' && pendingAsk(allMsgs()).ui && !ui.pending) return ''; // Cura's own answer buttons take over
     if (dailyAsk(allMsgs())) return ''; // so do the mood faces
     if (user.story && user.story.startedAt && !user.story.completedAt) return ''; // and Cura's story questions
     const first = !(user.transcript || []).length;
