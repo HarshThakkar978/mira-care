@@ -41,8 +41,8 @@ const day = n => `2026-11-0${n}`;
   // Starting and saving
   const u = normalizeUser({});
   const first = storyStart(u, keyEarly);
-  check(u.story.startedAt && /how did it all start/.test(first.text) && /mic/.test(first.text), 'start asks an open question and mentions the mic');
-  check(/agreed to tell you their story/.test(storyNote(u)), 'Cura is told the story is in progress');
+  check(u.story.startedAt && /first notice changes/.test(first.text) && /mic/.test(first.text) && first.ui && first.ui.options.length === 5, 'start asks a specific first question, with buttons, and mentions the mic');
+  check(/getting-to-know-you questions/.test(storyNote(u)) && /first notice changes/.test(storyNote(u)), 'Cura is told the next exact question');
   saveStory(u, { periods: 'changing', hardest_symptoms: ['Hot flashes', 'trouble sleeping'], symptoms_started: 'two years ago', age: 47 });
   saveStory(u, { hardest_symptoms: ['hot flashes', 'brain fog'], periods: 'nonsense', age: 300 });
   check(u.story.fields.periods === 'changing', 'invalid period value ignored');
@@ -51,14 +51,16 @@ const day = n => `2026-11-0${n}`;
   check(storyMissing(u).length === STORY_FIELDS.length - 4, 'four fields known');
   check(/last period/.test(storyNote(u)) && !/how their periods are now/.test(storyNote(u)), 'next question skips what is known');
   check(storyLines(u).find(([l]) => l === 'Periods')[1].startsWith('Changing'), 'doctor summary uses plain labels');
+  saveStory(u, { age: '45-49' }); check(u.story.fields.age === 47, 'a typed age is kept over a band');
+  const w = normalizeUser({}); saveStory(w, { age: '45-49' }); check(w.story.fields.age === '45–49', 'a tapped age band is saved');
 
   // Wrapping up
   saveStory(u, { done: true });
   check(!!u.story.completedAt, 'done=true finishes it');
   const v = normalizeUser({}); storyStart(v, keyEarly);
-  for (let i = 0; i < 9; i++) storyTurn(v);
-  check(!!v.story.completedAt, 'wraps up after 8 questions even with gaps');
-  check(!/agreed to tell/.test(storyNote(v)), 'no more questions once finished');
+  for (let i = 0; i < 13; i++) storyTurn(v);
+  check(!!v.story.completedAt, 'wraps up after 12 turns even with gaps');
+  check(!/getting-to-know-you/.test(storyNote(v)), 'no more questions once finished');
 
   // Stats for the admin page
   const st = storyStats([e, l, u, v, normalizeUser({})]);

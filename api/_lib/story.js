@@ -10,27 +10,48 @@
 // come back on another day ("later", 20+ hours after they started). The invitation is a pop-up in the app; if they
 // tap "Maybe later", Cura asks once more in the chat two days on. The admin page compares the two groups.
 
+// The questions, in the order Cura asks them. Each is specific and comes with tap-to-answer buttons, so it feels
+// like a quick check-in, not a form. Why each one matters:
+// - when it started, period changes and last period: how doctors place someone in the transition (STRAW+10:
+//   cycles varying by 7+ days = early, gaps of 60+ days = late, 12 months without = menopause);
+// - which symptoms affect daily life: the Menopause Rating Scale's areas (body, mood, sleep, urogenital);
+// - what they've tried; medical background that hides or mimics the signs (surgery, hormonal contraception,
+//   thyroid, cancer treatment); mother's age at menopause (timing runs in families);
+// - age: UK NICE guidance recognises perimenopause from symptoms after 45; before 40 it's worth a doctor's look;
+// - what they want help with, last, so Cura knows what to focus on.
 export const STORY_FIELDS = [
-  ['periods', 'how their periods are now'],
-  ['last_period', 'when their last period was'],
-  ['symptoms_started', 'when the symptoms started'],
-  ['hardest_symptoms', 'which symptoms are hardest'],
-  ['tried', "what they've tried and how it went"],
-  ['medical', 'relevant medical background (surgery such as a hysterectomy, conditions, regular medicines)'],
-  ['family', "family history, such as their mother's age at menopause"],
-  ['hopes', 'what they most want help with'],
-  ['age', 'their age']
+  ['symptoms_started', 'when they first noticed changes', 'When did you first notice changes you think might be perimenopause, like hot flashes, poorer sleep, mood changes or different periods?',
+    { kind: 'options', options: ['In the last 6 months', '6–12 months ago', '1–2 years ago', 'Over 2 years ago', 'Not sure'] }],
+  ['periods', 'how their periods are now', 'How are your periods now, compared with a few years ago?',
+    { kind: 'options', options: ['Still regular', 'Timing varies by a week+', 'Gaps of 2+ months', 'Stopped for a year+', 'Hard to say'] }],
+  ['last_period', 'when their last period started', 'When did your last period start?',
+    { kind: 'options', options: ['This month', '1–2 months ago', '3–11 months ago', 'Over a year ago', 'Not sure'] }],
+  ['hardest_symptoms', 'which symptoms affect them most', 'Which of these affect your day-to-day life the most? Pick any.',
+    { kind: 'multi', options: ['Hot flashes', 'Night sweats', 'Trouble sleeping', 'Mood or anxiety', 'Brain fog', 'Aches and pains', 'Heavy or painful periods', 'Low energy'] }],
+  ['tried', "what they've tried and whether it helped", 'What have you tried for them so far? Pick any.',
+    { kind: 'multi', options: ['Nothing yet', 'Sleep or diet changes', 'Exercise', 'Supplements', 'HRT', 'Other medicine', 'Saw a doctor about it'] }],
+  ['medical', 'medical background that affects the picture', 'Do any of these apply to you? Pick any.',
+    { kind: 'multi', options: ['Womb or ovary surgery', 'Hormonal IUD, pill or implant', 'Thyroid condition', 'Cancer treatment', 'Other regular medicines', 'None of these'] }],
+  ['family', "their mother's age at menopause", 'Do you know roughly how old your mum was when her periods stopped?',
+    { kind: 'options', options: ['Before 45', '45–50', 'After 50', "Don't know"] }],
+  ['age', 'their age', 'And how old are you?',
+    { kind: 'options', options: ['Under 40', '40–44', '45–49', '50–54', '55 or over'] }],
+  ['hopes', 'what they most want help with', 'Last one: what would you most like help with right now? Pick any.',
+    { kind: 'multi', options: ['Sleeping better', 'Fewer hot flashes', 'Feeling like myself', "Understanding what's happening", 'Talking to my doctor', 'Something else'] }]
 ];
+export const AGE_BANDS = ['Under 40', '40–44', '45–49', '50–54', '55 or over'];
+// How a tapped period answer maps to the saved stage.
+const PERIOD_ANSWERS = "Still regular = regular; Timing varies by a week+ = changing; Gaps of 2+ months = skipping; Stopped for a year+ = stopped; Hard to say = not_sure (or not_applicable if they mention a hysterectomy, hormonal IUD, pill or implant)";
 export const PERIODS = ['regular', 'changing', 'skipping', 'stopped', 'not_sure', 'not_applicable'];
 export const PERIODS_LABEL = {
   regular: 'Still regular', changing: 'Changing (cycle length varies by a week or more)', skipping: 'Skipping (60+ days between some periods)',
   stopped: 'Stopped (no period for 12+ months)', not_sure: 'Not sure', not_applicable: "Can't tell (hysterectomy, IUD, pill or similar)"
 };
 const FIELD_LABEL = {
-  periods: 'Periods', last_period: 'Last period', symptoms_started: 'Symptoms started', hardest_symptoms: 'Hardest symptoms', tried: 'Tried so far',
-  medical: 'Medical background', family: 'Family history', hopes: 'Wants help with', age: 'Age'
+  periods: 'Periods', last_period: 'Last period', symptoms_started: 'Changes started', hardest_symptoms: 'Affects me most', tried: 'Tried so far',
+  medical: 'Medical background', family: "Mum's menopause", hopes: 'Wants help with', age: 'Age'
 };
-const MAX_QUESTIONS = 8; // after this many story turns Cura wraps up, even if some things are still unknown
+const MAX_QUESTIONS = 12; // after this many story turns Cura wraps up, even if some things are still unknown (9 questions + a follow-up or two)
 
 export const freshStory = () => ({ arm: '', offeredAt: '', popupAt: '', snoozedAt: '', remindedAt: '', startedAt: '', completedAt: '', turns: 0, fields: {} });
 
@@ -88,9 +109,11 @@ export function storyStart(user, key, now = new Date()) {
   user.story.startedAt = user.story.startedAt || now.toISOString();
   user.story.completedAt = '';
   user.story.turns = 0;
+  const [, , ask, ui] = storyMissing(user)[0] || STORY_FIELDS[0];
   return {
     from: 'mira', at: now.toISOString(), kind: 'story',
-    text: "Thank you 💜 So, how did it all start, and what's it been like since? Periods, the symptoms that bother you most, anything you've tried. Tap the mic and just talk if that's easier."
+    text: `Thank you 💜 Just a few short questions, one at a time. Skip any you like, or tap the mic to talk.\n\nFirst: ${ask.charAt(0).toLowerCase() + ask.slice(1)}`,
+    ui
   };
 }
 
@@ -102,8 +125,9 @@ export function saveStory(user, input = {}, now = new Date()) {
   user.story = { ...freshStory(), ...(user.story || {}) };
   const f = { ...user.story.fields };
   if (PERIODS.includes(input.periods)) f.periods = input.periods;
-  const age = Number(input.age);
+  const age = Number(input.age), band = String(input.age || '').replace('-', '–').trim();
   if (age >= 18 && age <= 90) f.age = Math.round(age);
+  else if (AGE_BANDS.includes(band) && typeof f.age !== 'number') f.age = band; // a band never replaces an exact age
   for (const k of ['last_period', 'symptoms_started', 'tried', 'medical', 'family', 'hopes']) if (clean(input[k])) f[k] = clean(input[k]);
   if (Array.isArray(input.hardest_symptoms)) {
     const all = [...(f.hardest_symptoms || []), ...input.hardest_symptoms.map(x => clean(x, 60).toLowerCase()).filter(Boolean)];
@@ -134,10 +158,10 @@ export function storyNote(user) {
     .map(([k]) => `${k}: ${Array.isArray(f[k]) ? f[k].join(', ') : f[k]}`);
   const lines = known.length ? [`Their background so far: ${known.join('; ')}.`] : [];
   if (storyActive(user)) {
-    const missing = storyMissing(user);
-    lines.push(missing.length
-      ? `They agreed to tell you their story. Save what they share with save_background. Then ask about ONE of these, in this order, warmly and briefly: ${missing.map(([, d]) => d).join('; ')}. Offer tap-to-answer buttons when it fits (for periods use the six plain options). If they'd rather not answer, or seem done, thank them and call save_background with done=true.`
-      : 'You now have their whole story. Thank them warmly in a sentence, tell them it will make your insights more personal, and call save_background with done=true.');
+    const next = storyMissing(user)[0];
+    lines.push(next
+      ? `They're answering your getting-to-know-you questions. First save everything their last message tells you with save_background (it may answer several questions at once; for periods: ${PERIOD_ANSWERS}). If they said they tried something specific, you may ask once, briefly, whether it helped before moving on. Otherwise ask the next question, after a short natural reaction (a few words, no stock phrases): "${next[2]}" Use these words or very close ones, and call show_quick_replies with kind "${next[3].kind}" and exactly these options: ${JSON.stringify(next[3].options)}. One question per message. If they'd rather stop, thank them and call save_background with done=true.${f.age === 'Under 40' ? ' They are under 40: once, gently, mention that symptoms like these before 40 are worth raising with a doctor.' : ''}`
+      : 'You now have their whole story. Thank them warmly in a sentence, say it will help you tailor your tips and find them the right Circle, and call save_background with done=true.');
   } else if (!known.length) lines.push('If they mention their history (when this started, treatments, surgery, family history), save it with save_background.');
   return lines.length ? `<background>${lines.join(' ')}</background>` : '';
 }

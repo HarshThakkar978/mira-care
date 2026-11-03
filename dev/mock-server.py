@@ -129,7 +129,7 @@ def handle(body):
         return {"user": view(u)}
     if a == "story-start":
         st = u.setdefault("story", {}); st["startedAt"] = now().isoformat(); st.setdefault("fields", {})
-        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 So, how did it all start, and what's it been like since? Periods, the symptoms that bother you most, anything you've tried. Tap the mic and just talk if that's easier."})
+        u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 Just a few short questions, one at a time. Skip any you like, or tap the mic to talk.\n\nFirst: when did you first notice changes you think might be perimenopause, like hot flashes, poorer sleep, mood changes or different periods?", "ui": {"kind": "options", "options": ["In the last 6 months", "6–12 months ago", "1–2 years ago", "Over 2 years ago", "Not sure"]}})
         return {"user": view(u)}
     if a == "insight":
         return {"insight": "Hot flashes showed up on 3 nights this week, mostly around 6–8, and they often came with broken sleep."}
@@ -214,7 +214,7 @@ def chat_stream(h, body):
     st = u.get("story") or {}
     if st.get("startedAt") and not st.get("completedAt"):
         st.setdefault("fields", {}).update({"symptoms_started": "about two years ago", "hardest_symptoms": ["hot flashes", "trouble sleeping"], "periods": "changing"})
-        reply, ui = "Thank you for sharing that 💜 Two years is a long time to carry this. Have you tried anything for it so far, like HRT, supplements or changes at home?", {"kind": "options", "options": ["HRT", "Supplements", "Lifestyle changes", "Nothing yet"]}
+        reply, ui = "Two years is a while. How are your periods now, compared with a few years ago?", {"kind": "options", "options": ["Still regular", "Timing varies by a week+", "Gaps of 2+ months", "Stopped for a year+", "Hard to say"]}
     elif "flash" in low:
         reply, ui = "Ugh, the night ones are the worst. Layers you can throw off fast and a fan nearby can take the edge off. Did it wake you up?", {"kind": "options", "options": ["Yes", "No"]}
         saved = ["hot flashes 7/10"]

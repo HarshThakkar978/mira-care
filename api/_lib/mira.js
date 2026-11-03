@@ -240,7 +240,8 @@ export const BACKGROUND_TOOL = {
       medical: { type: 'string', description: 'Relevant background: surgery such as a hysterectomy or ovaries removed, conditions such as thyroid problems, regular medicines.' },
       family: { type: 'string', description: "Family history, such as their mother's age at menopause." },
       hopes: { type: 'string', description: 'What they most want help with, from Cura or their doctor.' },
-      age: { type: 'integer', minimum: 18, maximum: 90 },
+      // (tried, medical and hopes may hold several tapped answers, e.g. "Supplements, HRT")
+      age: { type: 'string', description: 'Their age as a number ("47") or the band they tapped: Under 40, 40–44, 45–49, 50–54, 55 or over.' },
       done: { type: 'boolean', description: 'true when the story questions are finished or they want to stop.' }
     }
   }

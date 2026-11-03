@@ -1317,7 +1317,7 @@
     if (!text || !document.body.contains(box)) return false;
     box.value = box.value.trim() ? `${box.value.trimEnd()} ${text}` : text;
     box.dispatchEvent(new Event('input', { bubbles: true }));
-    box.focus();
+    if (!matchMedia('(pointer: coarse)').matches) box.focus(); // on a phone that would shift the layout without opening the keyboard
     return true;
   }
   const toB64 = blob => new Promise((ok, fail) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(',')[1] || ''); f.onerror = fail; f.readAsDataURL(blob); });
@@ -1381,7 +1381,7 @@
     ui.sheet = null; renderSheet();
     if (route !== 'chat') go('chat');
     try { await api('story-start'); } catch (e) { toast(e.message); }
-    if (route === 'chat') { refreshThread(); setTimeout(() => $('#msgInput')?.focus(), 50); } else render();
+    if (route === 'chat') refreshThread(); else render();
   }
   // The invitation (see story.js): a pop-up once it's their time, then a card on Today until they start.
   const storyWaiting = () => !!(ui.storyOn && user.story && user.story.offeredAt && !user.story.startedAt);
@@ -1402,7 +1402,7 @@
   function storyInviteHtml() {
     return `<div class="ob"><div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
       <h2 id="sheetTitle" class="ob-title">Help Cura get to know you</h2>
-      <p class="ob-text">Tell Cura a little about how this started for you. She'll use it to make her tips fit you, and to find you a Circle of women going through the same thing.</p>
+      <p class="ob-text">A few quick questions about your perimenopause so far: when the changes started, your periods, what you've tried. Cura uses it to tailor her tips to you and find you a Circle of women going through the same thing.</p>
       <div class="story-perks"><span>⏱️ About 3 min</span><span>🎙️ Talk or type</span><span>👋 Skip anything</span></div></div>
       <div class="story-actions"><button class="btn primary" data-action="story-go">Let's do it</button><button class="btn ghost" data-action="story-later">Maybe later</button></div>`;
   }
@@ -1410,7 +1410,7 @@
     if (!storyWaiting()) return '';
     return `<button class="card story-nudge" data-action="story-go"><span class="sn-ico" aria-hidden="true">💜</span><span class="sn-text"><b>Help Cura get to know you</b><span>3 minutes · talk or type</span></span><span class="sn-go" aria-hidden="true">›</span></button>`;
   }
-  const STORY_LABELS = [['periods', 'Periods'], ['last_period', 'Last period'], ['symptoms_started', 'Symptoms started'], ['hardest_symptoms', 'Hardest symptoms'], ['tried', 'Tried so far'], ['medical', 'Medical background'], ['family', 'Family history'], ['hopes', 'Wants help with'], ['age', 'Age']];
+  const STORY_LABELS = [['symptoms_started', 'Changes started'], ['periods', 'Periods'], ['last_period', 'Last period'], ['hardest_symptoms', 'Affects me most'], ['tried', 'Tried so far'], ['medical', 'Medical background'], ['family', "Mum's menopause"], ['age', 'Age'], ['hopes', 'Wants help with']];
   const PERIODS_LABEL = { regular: 'Still regular', changing: 'Changing (length varies by a week or more)', skipping: 'Skipping (60+ days between some)', stopped: 'Stopped (12+ months)', not_sure: 'Not sure', not_applicable: "Can't tell (hysterectomy, IUD, pill or similar)" };
   function storyRows() {
     const f = (user.story && user.story.fields) || {};
@@ -1699,12 +1699,19 @@
     const sh = $('#sheet'), fit = document.body.classList.contains('field-open') && ui.sheet;
     if (sh) { sh.style.top = fit ? `${Math.round(vv.offsetTop)}px` : ''; sh.style.height = fit ? `${Math.round(vv.height)}px` : ''; sh.style.bottom = fit ? 'auto' : ''; }
   }
-  if (vv) { vv.addEventListener('resize', fitViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
+  const coarse = matchMedia('(pointer: coarse)').matches;
+  const keyboardUp = () => !!vv && window.innerHeight - vv.height > 120;
+  let boxTapAt = 0;
+  document.addEventListener('pointerdown', e => { if (isTyping(e.target)) boxTapAt = Date.now(); }, true);
+  // If the keyboard does open for a box that already has focus, switch to the typing layout then.
+  const onViewport = () => { if (!document.body.classList.contains('kb-open') && isTyping(document.activeElement) && keyboardUp()) { document.body.classList.add('kb-open'); pinThread(); } fitViewport(); };
+  if (vv) { vv.addEventListener('resize', onViewport); vv.addEventListener('scroll', fitViewport); fitViewport(); }
   const isTyping = el => el && (el.id === 'msgInput' || el.id === 'groupInput');
   const isField = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select');
   document.addEventListener('focusin', e => {
     if (isField(e.target)) document.body.classList.add('field-open');
-    if (isTyping(e.target)) { document.body.classList.add('kb-open'); pinThread(); setTimeout(fitViewport, 50); }
+    // Typing layout only when a keyboard is really coming: they tapped the box (phones ignore a focus the app makes on its own).
+    if (isTyping(e.target) && (!coarse || Date.now() - boxTapAt < 1500 || keyboardUp())) { document.body.classList.add('kb-open'); pinThread(); setTimeout(fitViewport, 50); }
     else if (isField(e.target) && e.target.closest('#sheet')) { setTimeout(fitViewport, 50); setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350); }
   });
   document.addEventListener('focusout', e => {
