@@ -48,6 +48,10 @@ SCENARIOS = {
                    "okay so um it started maybe a year and a half ago when I was 46, my periods went from every 28 days to like every 40 or 50, last one was about six weeks ago. night sweats are the worst and the anxiety, I never used to be anxious. I tried cutting caffeine which helped a little. my mum had early menopause I think around 45. I had my gallbladder out years ago but nothing else",
                    "mainly I just want to sleep through the night again",
                    "thanks that's everything"],
+    # Tapping the buttons all the way through, with one typed answer in the middle.
+    "storytaps": [("action", "story-start"), "1–2 years ago", "Gaps of 2+ months", "1–2 months ago",
+                  "Hot flashes, Trouble sleeping, Brain fog", "Supplements, Exercise", "magnesium helped my sleep a bit, exercise not really",
+                  "Thyroid condition", "45–50", "45–49", "Sleeping better, Talking to my doctor"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),
@@ -72,7 +76,7 @@ for name, msgs in SCENARIOS.items():
     try:
         for m in msgs:
             if isinstance(m, tuple) and m[0] == "action":
-                d = call(dev, m[1]); print(f"[{m[1]}] CURA: {d['user']['transcript'][-1]['text']}\n"); continue
+                d = call(dev, m[1]); t = d['user']['transcript'][-1]; print(f"[{m[1]}] CURA: {t['text']}" + (f"\nBUTTONS: {t['ui']}" if t.get('ui') else "") + "\n"); continue
             if isinstance(m, tuple):
                 _, tool, inp = m
                 inp = dict(inp); days = inp.pop("days_ago", 0)

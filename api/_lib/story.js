@@ -133,10 +133,16 @@ export function saveStory(user, input = {}, now = new Date()) {
     const all = [...(f.hardest_symptoms || []), ...input.hardest_symptoms.map(x => clean(x, 60).toLowerCase()).filter(Boolean)];
     f.hardest_symptoms = [...new Set(all)].slice(0, 8);
   }
+  // They skipped a question: mark it so it isn't asked again (not shown anywhere).
+  const skip = STORY_FIELDS.find(([k]) => k === input.skip);
+  if (skip && (f[skip[0]] == null || f[skip[0]] === '')) f[skip[0]] = SKIPPED;
   user.story.fields = f;
   if (input.done === true && user.story.startedAt && !user.story.completedAt) user.story.completedAt = now.toISOString();
-  return { ok: true, saved: f, missing: storyMissing(user).map(([k]) => k) };
+  const next = !user.story.completedAt && storyMissing(user)[0];
+  return { ok: true, next_question: next ? { about: next[0], ask: next[2], buttons: next[3] } : null };
 }
+export const SKIPPED = '(skipped)';
+const shown = v => v != null && v !== '' && v !== SKIPPED && !(Array.isArray(v) && !v.length);
 
 export const storyMissing = user => STORY_FIELDS.filter(([k]) => {
   const v = ((user.story || {}).fields || {})[k];
@@ -154,13 +160,13 @@ export function storyTurn(user, now = new Date()) {
 // What Cura sees each turn.
 export function storyNote(user) {
   const f = (user.story || {}).fields || {};
-  const known = STORY_FIELDS.filter(([k]) => f[k] != null && f[k] !== '' && !(Array.isArray(f[k]) && !f[k].length))
+  const known = STORY_FIELDS.filter(([k]) => shown(f[k]))
     .map(([k]) => `${k}: ${Array.isArray(f[k]) ? f[k].join(', ') : f[k]}`);
   const lines = known.length ? [`Their background so far: ${known.join('; ')}.`] : [];
   if (storyActive(user)) {
-    const next = storyMissing(user)[0];
-    lines.push(next
-      ? `They're answering your getting-to-know-you questions. First save everything their last message tells you with save_background (it may answer several questions at once; for periods: ${PERIOD_ANSWERS}). If they said they tried something specific, you may ask once, briefly, whether it helped before moving on. Otherwise ask the next question, after a short natural reaction (a few words, no stock phrases): "${next[2]}" Use these words or very close ones, and call show_quick_replies with kind "${next[3].kind}" and exactly these options: ${JSON.stringify(next[3].options)}. One question per message. If they'd rather stop, thank them and call save_background with done=true.${f.age === 'Under 40' ? ' They are under 40: once, gently, mention that symptoms like these before 40 are worth raising with a doctor.' : ''}`
+    const now = storyMissing(user)[0];
+    lines.push(now
+      ? `They're answering your getting-to-know-you questions. Your last question was about ${now[1]} ("${now[2]}"), so a short answer or tapped button answers that. First call save_background with everything their message tells you (it may answer several questions at once; for periods: ${PERIOD_ANSWERS}). If they skipped it or would rather not say, pass skip: "${now[0]}". The result's next_question is what to ask next: after a few words reacting naturally (no stock phrases), ask it in those words or very close ones, and call show_quick_replies with exactly its buttons. One question per message. If they said they tried something specific, you may first ask once, briefly, whether it helped. If next_question is null, thank them warmly in a sentence, say it will help you tailor your tips and find them the right Circle, and call save_background with done=true. If they want to stop, thank them and call save_background with done=true.${f.age === 'Under 40' ? ' They are under 40: once, gently, mention that symptoms like these before 40 are worth raising with a doctor.' : ''}`
       : 'You now have their whole story. Thank them warmly in a sentence, say it will help you tailor your tips and find them the right Circle, and call save_background with done=true.');
   } else if (!known.length) lines.push('If they mention their history (when this started, treatments, surgery, family history), save it with save_background.');
   return lines.length ? `<background>${lines.join(' ')}</background>` : '';
@@ -169,7 +175,7 @@ export function storyNote(user) {
 // For the doctor summary and the Me tab.
 export function storyLines(user) {
   const f = (user.story || {}).fields || {};
-  return STORY_FIELDS.filter(([k]) => f[k] != null && f[k] !== '' && !(Array.isArray(f[k]) && !f[k].length))
+  return STORY_FIELDS.filter(([k]) => shown(f[k]))
     .map(([k]) => [FIELD_LABEL[k], k === 'periods' ? PERIODS_LABEL[f[k]] : Array.isArray(f[k]) ? f[k].join(', ') : String(f[k])]);
 }
 

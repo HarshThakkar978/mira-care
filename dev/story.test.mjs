@@ -51,6 +51,10 @@ const day = n => `2026-11-0${n}`;
   check(storyMissing(u).length === STORY_FIELDS.length - 4, 'four fields known');
   check(/last period/.test(storyNote(u)) && !/how their periods are now/.test(storyNote(u)), 'next question skips what is known');
   check(storyLines(u).find(([l]) => l === 'Periods')[1].startsWith('Changing'), 'doctor summary uses plain labels');
+  const r1 = saveStory(normalizeUser({}), { symptoms_started: '1–2 years ago' });
+  check(r1.next_question && r1.next_question.about === 'periods' && r1.next_question.buttons.options.length === 5, 'saving hands Cura the next question and its buttons');
+  const sk = normalizeUser({}); saveStory(sk, { skip: 'symptoms_started' });
+  check(storyMissing(sk)[0][0] === 'periods' && !storyLines(sk).length, 'a skipped question is not asked again or shown');
   saveStory(u, { age: '45-49' }); check(u.story.fields.age === 47, 'a typed age is kept over a band');
   const w = normalizeUser({}); saveStory(w, { age: '45-49' }); check(w.story.fields.age === '45–49', 'a tapped age band is saved');
 

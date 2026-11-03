@@ -1414,7 +1414,7 @@
   const PERIODS_LABEL = { regular: 'Still regular', changing: 'Changing (length varies by a week or more)', skipping: 'Skipping (60+ days between some)', stopped: 'Stopped (12+ months)', not_sure: 'Not sure', not_applicable: "Can't tell (hysterectomy, IUD, pill or similar)" };
   function storyRows() {
     const f = (user.story && user.story.fields) || {};
-    return STORY_LABELS.filter(([k]) => f[k] != null && f[k] !== '' && !(Array.isArray(f[k]) && !f[k].length))
+    return STORY_LABELS.filter(([k]) => f[k] != null && f[k] !== '' && f[k] !== '(skipped)' && !(Array.isArray(f[k]) && !f[k].length))
       .map(([k, l]) => [l, k === 'periods' ? PERIODS_LABEL[f[k]] || f[k] : Array.isArray(f[k]) ? f[k].join(', ') : String(f[k])]);
   }
 

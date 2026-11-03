@@ -1,7 +1,7 @@
 // Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
 // Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
 import { freshCommunity, addDays, daysBetween, whenLabel } from './community-logic.js';
-import { freshStory, saveStory, storyNote, PERIODS } from './story.js';
+import { freshStory, saveStory, storyNote, PERIODS, STORY_FIELDS } from './story.js';
 
 const HISTORY_TURNS = 16;
 const MAX_TOOL_ROUNDS = 6;
@@ -242,6 +242,7 @@ export const BACKGROUND_TOOL = {
       hopes: { type: 'string', description: 'What they most want help with, from Cura or their doctor.' },
       // (tried, medical and hopes may hold several tapped answers, e.g. "Supplements, HRT")
       age: { type: 'string', description: 'Their age as a number ("47") or the band they tapped: Under 40, 40–44, 45–49, 50–54, 55 or over.' },
+      skip: { type: 'string', enum: STORY_FIELDS.map(([k]) => k), description: 'The question they skipped or would rather not answer.' },
       done: { type: 'boolean', description: 'true when the story questions are finished or they want to stop.' }
     }
   }
