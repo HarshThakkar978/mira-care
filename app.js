@@ -154,7 +154,8 @@
     // Only messages that arrived since the last render get the entrance animation.
     const fresh = ui.seen === null ? msgs.length : ui.seen;
     let html = total > msgs.length ? `<button class="load-older no-print" data-action="older" ${ui.loadingOlder ? 'disabled' : ''}>${ui.loadingOlder ? 'Loading…' : 'Load earlier messages'}</button>` : '';
-    if (!msgs.length) html += `<div class="stamp"><b>Cura</b></div><div class="msg them tail">${fmtMsg(welcomeText())}</div>`;
+    // Cura's hello stays at the top of the chat (it isn't saved on the server, so it would vanish after the first message).
+    if (!msgs.length || (total === msgs.length && msgs[0].from === 'you')) html += `<div class="stamp"><b>Cura</b></div><div class="msg them tail">${fmtMsg(welcomeText())}</div>`;
     msgs.forEach((m, i) => {
       const prev = msgs[i - 1], next = msgs[i + 1];
       if (!prev || new Date(m.at) - new Date(prev.at) > 3600000) html += `<div class="stamp">${stampText(m.at)}</div>`;
@@ -495,7 +496,7 @@
       ${meGroup('', [
         meRow('👤', 'Name', p.name ? esc(p.name) : 'Add', 'data-me="name"'),
         ui.googleId ? meRow('🔒', 'Account', user.account ? 'Google' : 'Not signed in', 'data-me="account"') : '',
-        meRow('📖', 'Your story', storyDone ? 'Shared' : 'Not yet', 'data-me="story"')
+        ui.storyOn ? meRow('📖', 'Your story', storyDone ? 'Shared' : 'Not yet', 'data-me="story"') : ''
       ])}
       ${meGroup('Every day', [
         meRow('🔔', 'Daily reminder', reminderVal, 'data-me="reminder"'),
@@ -1120,7 +1121,7 @@
       hello: `<div class="ob-art"><img src="/icons/icon-192.png" alt="" class="ob-icon"></div>
         <h2 id="sheetTitle" class="ob-title">Perimenopause is a lot. Text it to Cura.</h2>
         <p class="ob-text">Tell Cura how you feel in your own words. She keeps track, spots patterns and gets you ready for your doctor.</p>
-        <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, sorry. Saved at 7. That's 3 nights this week, want a quick tip?</div></div>
+        <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, third night this week. Want a quick tip for tonight?</div><div class="msg-meta"><span class="msg-saved">${CHECK_SVG}Saved: hot flashes 7/10</span></div></div>
         ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Signing in keeps your notes safe if you change phones. Already use Cura? Sign in to bring everything back.</p>` : ''}`,
       symptoms: `<h2 id="sheetTitle" class="ob-title">What's been hardest lately?</h2>
         <p class="ob-text">Pick up to 3. Cura will start there.</p>
@@ -1178,7 +1179,7 @@
       <div class="report-head"><div class="brand"><img class="brand-mark" src="/icons/icon-192.png" alt=""><span class="brand-name">cura</span></div>
         <h1 class="title" style="font-size:26px">Symptom & cycle summary${p.name ? ' · ' + esc(p.name) : ''}</h1>
         <p class="sub">${fmt(from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })} · made ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })}${p.appointmentDate ? ` · for the appointment on ${fmtLong(p.appointmentDate)}${p.clinician ? ' with ' + esc(p.clinician) : ''}` : ''}</p></div>
-      ${storyRows().length ? `<section class="rsec"><h2>My background</h2><table class="rtable"><tbody>${storyRows().map(([l, v]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></section>` : ''}
+      ${ui.storyOn && storyRows().length ? `<section class="rsec"><h2>My background</h2><table class="rtable"><tbody>${storyRows().map(([l, v]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></section>` : ''}
       ${user.agenda.summary ? `<section class="rsec"><h2>In my words</h2><p>${esc(user.agenda.summary)}</p></section>` : ''}
       <section class="rsec"><h2>Symptoms at a glance</h2>${table(['Symptom', 'Days noticed', 'Average', 'Strongest'], top.map(t => [esc(cap(t.name)), t.days.size, t.sevN ? avgText(t.sevSum, t.sevN) : '—', maxSev(t.name) ? maxSev(t.name) + '/10' : '—']), 'No symptoms logged in this period.')}</section>
       <section class="rsec"><h2>Periods</h2>${table(['Started', 'Days since previous'], [...starts].reverse().slice(0, 12).map((c, i, arr) => [fmtLong(c.date), arr[i + 1] ? diffDays(arr[i + 1].date, c.date) : '—']), 'No period starts logged.')}</section>
@@ -1336,7 +1337,7 @@
   }
   // Cura's invitation, once it's due (see story.js). New people get it after their first chat instead.
   async function maybeStoryOffer() {
-    if (!(user.transcript || []).length || (user.story && (user.story.offeredAt || user.story.startedAt))) return;
+    if (!ui.storyOn || !(user.transcript || []).length || (user.story && (user.story.offeredAt || user.story.startedAt))) return;
     try { const d = await api('story-offer', {}, { keepUser: true }); if (d.offered) { setUser(d.user); if (route === 'chat' && !ui.sending) refreshThread(); } } catch {}
   }
   const STORY_LABELS = [['periods', 'Periods'], ['last_period', 'Last period'], ['symptoms_started', 'Symptoms started'], ['hardest_symptoms', 'Hardest symptoms'], ['tried', 'Tried so far'], ['medical', 'Medical background'], ['family', 'Family history'], ['hopes', 'Wants help with'], ['age', 'Age']];
@@ -1661,7 +1662,7 @@
       else if (ui.googleId && !user.account && hasData(user) && !store.get(ACCT_KEY) && !ui.sheet) { ui.sheet = 'account'; renderSheet(); }
       else if (wantsInstall() && hasData(user) && !ui.sheet) { ui.sheet = 'install'; renderSheet(); }
       maybeTips();
-      ui.voice = !!d.voice; addMics();
+      ui.voice = !!d.voice; ui.storyOn = !!d.story; addMics();
       if (!ui.sheet) maybeStoryOffer();
     } catch (e) { toast('Offline: showing your last saved data'); }
   })();

@@ -29,8 +29,10 @@ const view = user => {
 };
 const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+// "Your story" is still being shaped: on in preview copies, off on the live site until CURA_STORY=on is set in Vercel.
+const storyOn = () => process.env.CURA_STORY === 'on' || process.env.VERCEL_ENV !== 'production';
 // After Cura's reply: at most one extra message, the Circle invitation or the "tell me your story" offer.
-const afterReply = key => async u => circleInvite(u, await loadSettings()) || storyOffer(u, key);
+const afterReply = key => async u => circleInvite(u, await loadSettings()) || (storyOn() ? storyOffer(u, key) : null);
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
 export async function POST(request) {
@@ -45,7 +47,7 @@ export async function POST(request) {
     if (action === 'load') {
       const user = await loadUser(key);
       const settings = await loadSettings().catch(() => ({}));
-      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen, voice: voiceConfigured() });
+      return json({ user: view(user), communityUnread: await unreadCount(key, user).catch(() => 0), googleClientId: process.env.GOOGLE_CLIENT_ID || '', circleOpenAll: !!settings.circleOpen, voice: voiceConfigured(), story: storyOn() });
     }
 
     if (action === 'chat') {
@@ -75,13 +77,14 @@ export async function POST(request) {
     }
     if (action === 'story-offer') {
       // Asked by the app when it opens or after a check-in; adds Cura's invitation once it's due for this person.
-      const msg = storyOffer(user, key);
+      const msg = storyOn() ? storyOffer(user, key) : null;
       if (!msg) return json({ offered: false });
       user.transcript = [...user.transcript, msg].slice(-300);
       await storeUser(key, user);
       return json({ offered: true, user: view(user) });
     }
     if (action === 'story-start') {
+      if (!storyOn()) return json({ error: 'Not available yet' }, 404);
       user.transcript = [...user.transcript, storyStart(user, key)].slice(-300);
       await storeUser(key, user);
       return json({ user: view(user) });

@@ -466,6 +466,7 @@ body.kb-open .chat-head .head-plus{display:none}
 .ob-demo{display:flex;flex-direction:column;gap:6px;background:var(--surface-2);border-radius:22px;padding:14px;margin:0 auto 14px;max-width:360px;text-align:left}
 .ob-demo .msg{font-size:15px;max-width:88%;margin:0}
 .ob-demo .msg.them{background:var(--surface)}
+.ob-demo .msg-meta{margin:-2px 0 0 8px}
 .ob-chips{justify-content:center;max-width:380px;margin:0 auto}
 .ob-times{display:grid;grid-template-columns:1fr 1fr;gap:10px;max-width:360px;margin:0 auto 14px}
 .ob-time{border:1.5px solid var(--line);background:var(--surface);border-radius:20px;padding:16px 8px;display:flex;flex-direction:column;align-items:center;gap:4px;color:var(--ink);min-height:44px}
