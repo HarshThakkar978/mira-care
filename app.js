@@ -1004,6 +1004,7 @@
     if (all) Object.keys(TIPS).forEach(k => { seen[k] = 1; }); else if (coach) seen[coach.screen] = 1;
     store.set(TIPS_KEY, JSON.stringify(seen));
     coach = null; drawCoach();
+    setTimeout(showStoryPopup, 600); // the "your story" invitation waits until tips are out of the way
   }
   document.addEventListener('click', e => {
     const b = e.target.closest('[data-coach]');
@@ -1080,6 +1081,7 @@
     // Right after the welcome, on a phone browser: offer the Home Screen (reminders need it on iPhone).
     if (wasTour && wantsInstall()) ui.sheet = 'install';
     if (wasTour || route === 'me') render(); else { renderSheet(); maybeTips(); } // so Cura's first message picks up their answers
+    setTimeout(showStoryPopup, 900); // if the invitation came due while another panel was open
   }
   function quickLogHtml() {
     const L = ui.log, yesterday = addDays(today(), -1);
@@ -1399,6 +1401,7 @@
     const s = user.story || {};
     if (!storyWaiting() || s.popupAt || ui.sheet || ui.sending || $('#coach .coach-ring')) return;
     ui.sheet = 'story'; renderSheet();
+    user.story.popupAt = new Date().toISOString(); // shown once, even before the server confirms
     api('story-seen', {}, { keepUser: true }).then(d => setUser(d.user)).catch(() => {});
   }
   function storyInviteHtml() {
