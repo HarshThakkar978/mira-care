@@ -312,16 +312,25 @@ body.sheet-open{overflow:hidden}
 .qr-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--faint);padding:0 2px}
 
 /* ---------- While typing on a phone: give the chat the whole screen ---------- */
+/* The header, tab bar and suggestions ease out of the way (in time with the keyboard) instead of snapping. */
 @media (max-width:760px){
-  body.kb-open .nav,body.kb-open #chips{display:none}
-  body.kb-open .app{grid-template-rows:minmax(0,1fr) 0}
+  .app{transition:grid-template-rows .28s cubic-bezier(.2,.8,.2,1)}
+  .nav{overflow:hidden;transition:opacity .2s ease,transform .28s cubic-bezier(.2,.8,.2,1)}
+  .chat-head{transition:padding .28s cubic-bezier(.2,.8,.2,1)}
+  .chat-head .avatar{transition:width .28s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1)}
+  .chat-status{display:block;max-height:20px;overflow:hidden;transition:max-height .25s ease,opacity .2s ease}
+  #chips{max-height:60px;transition:max-height .25s ease,opacity .2s ease,padding .25s ease}
+  body.kb-open .nav,body.field-open .nav{opacity:0;transform:translateY(24px);pointer-events:none}
+  body.kb-open #chips{max-height:0;opacity:0;padding-top:0;padding-bottom:0;overflow:hidden;pointer-events:none}
+  body.kb-open .app,body.field-open .app{grid-template-rows:minmax(0,1fr) 0}
   body.kb-open .chat-head{padding-top:calc(4px + var(--safe-t));padding-bottom:6px}
-  body.kb-open .chat-head .avatar{width:30px;height:30px;font-size:18px}
-  body.kb-open .chat-status{display:none}
+  body.kb-open .chat-head .avatar{width:32px;height:32px}
+  body.kb-open .chat-status{max-height:0;opacity:0}
   body.kb-open .composer{padding-bottom:8px}
-  body.field-open .nav{display:none}
-  body.field-open .app{grid-template-rows:minmax(0,1fr) 0}
 }
+.chat-head.settle{animation:headsettle .32s cubic-bezier(.2,.8,.2,1)}
+@keyframes headsettle{from{transform:translateY(-100%);opacity:.4}to{transform:none;opacity:1}}
+@media (prefers-reduced-motion:reduce){.app,.nav,.chat-head,.chat-head .avatar,.chat-status,#chips{transition:none!important}.chat-head.settle{animation:none}}
 body.field-open .sheet{max-height:calc(100% - 10px)}
 
 /* ---------- Community ---------- */
@@ -391,6 +400,8 @@ img.brand-mark{background:none;object-fit:cover}
 /* Chat */
 .chat-head{flex-direction:row;align-items:center;gap:12px;padding:calc(12px + var(--safe-t)) 16px 12px}
 .chat-head .avatar{width:42px;height:42px;font-size:23px;font-weight:700;font-family:'Bricolage Grotesque',sans-serif}
+.avatar.sprig{background:#E8E0FA;box-shadow:inset 0 0 0 1px rgba(78,51,153,.08);overflow:hidden}
+.avatar.sprig svg{width:82%;height:82%;margin-top:4%}
 .ch-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
 .chat-name{font-size:17px;font-weight:700;justify-content:flex-start}
 .chat-status{font-size:13px;color:var(--muted)}

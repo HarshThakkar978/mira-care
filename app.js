@@ -146,6 +146,8 @@
     return `${hello ? `<div class="msg them tail">${fmtMsg(hello)}</div>` : ''}<div class="mood-row" role="group" aria-label="How are you feeling today?">${MOODS.map(m => `<button class="mood-btn" data-chip="Feeling ${m.toLowerCase()} today">${moodFace(m, 30)}<span>${m}</span></button>`).join('')}</div>`;
   }
 
+  // Cura's lavender sprig (the same as the app icon), for her picture in the chat header.
+  const SPRIG_SVG = '<svg viewBox="0 0 40 40"><path d="M20 34V14" fill="none" stroke="#4E3399" stroke-width="2.4" stroke-linecap="round"/><ellipse cx="20" cy="9" rx="3" ry="4" fill="#6A4BC4"/><ellipse cx="15.5" cy="14" rx="2.6" ry="3.6" transform="rotate(-30 15.5 14)" fill="#7F5FD8"/><ellipse cx="24.5" cy="14" rx="2.6" ry="3.6" transform="rotate(30 24.5 14)" fill="#7F5FD8"/><ellipse cx="15.5" cy="20.5" rx="2.4" ry="3.3" transform="rotate(-30 15.5 20.5)" fill="#AE93EA"/><ellipse cx="24.5" cy="20.5" rx="2.4" ry="3.3" transform="rotate(30 24.5 20.5)" fill="#AE93EA"/><path d="M20 27c-3-.4-5.5-2-6.5-4.5M20 27c3-.4 5.5-2 6.5-4.5" fill="none" stroke="#3F8F7A" stroke-width="2" stroke-linecap="round"/></svg>';
   function threadHtml() {
     const msgs = allMsgs();
     const total = Math.max(user.transcriptTotal || 0, msgs.length);
@@ -204,7 +206,7 @@
     const tip = isIOS() && !isStandalone() && !store.get(TIP_KEY)
       ? `<div class="install no-print"><span>📲</span><span><b>Keep Cura on your Home Screen.</b> <button class="linkish" data-action="install-open">Show me how</button></span><button class="icon-btn" data-action="dismiss-tip" aria-label="Dismiss">×</button></div>` : '';
     return `<section class="chat">
-      <header class="chat-head"><div class="avatar">c</div><div class="ch-main"><div class="chat-name">Cura</div><div class="chat-status">Here for you, day or night</div></div>
+      <header class="chat-head"><div class="avatar sprig" aria-hidden="true">${SPRIG_SVG}</div><div class="ch-main"><div class="chat-name">Cura</div><div class="chat-status">Here for you, day or night</div></div>
         <button class="head-plus no-print" type="button" data-action="quick-log" aria-label="Quick check-in"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button></header>
       ${tip}
       <div class="thread" id="thread" aria-live="polite">${threadHtml()}</div>
@@ -1173,7 +1175,7 @@
     const table = (head, rows, empty) => rows.length ? `<table class="rtable"><thead><tr>${head.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody></table>` : `<p class="muted small">${empty}</p>`;
     return `<div class="page report">
       <div class="row no-print" style="margin-bottom:14px"><button class="btn ghost" data-route="visit">← Back</button><button class="btn primary" data-action="print">Print / Save as PDF</button></div>
-      <div class="report-head"><div class="brand"><span class="brand-mark">c</span><span class="brand-name">cura</span></div>
+      <div class="report-head"><div class="brand"><img class="brand-mark" src="/icons/icon-192.png" alt=""><span class="brand-name">cura</span></div>
         <h1 class="title" style="font-size:26px">Symptom & cycle summary${p.name ? ' · ' + esc(p.name) : ''}</h1>
         <p class="sub">${fmt(from, { month: 'short', day: 'numeric', year: 'numeric' })} – ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })} · made ${fmt(today(), { month: 'short', day: 'numeric', year: 'numeric' })}${p.appointmentDate ? ` · for the appointment on ${fmtLong(p.appointmentDate)}${p.clinician ? ' with ' + esc(p.clinician) : ''}` : ''}</p></div>
       ${storyRows().length ? `<section class="rsec"><h2>My background</h2><table class="rtable"><tbody>${storyRows().map(([l, v]) => `<tr><th scope="row">${esc(l)}</th><td>${esc(v)}</td></tr>`).join('')}</tbody></table></section>` : ''}
@@ -1593,11 +1595,26 @@
   // Only the chat composers resize the app to the space above the keyboard. Other fields (appointment, names,
   // notes) keep the normal layout and let the phone scroll them into view; shrinking the app for those
   // pushed the tab bar to the top and left the page blank.
+  // Keeps the newest message right above the box while the layout eases into its new size.
+  let pinUntil = 0;
+  function pinThread(ms = 360) {
+    const t = $('#thread') || $('#gthread'); if (!t) return;
+    const run = !pinUntil || Date.now() > pinUntil; pinUntil = Date.now() + ms;
+    if (!run) return;
+    const step = () => { const el = $('#thread') || $('#gthread'); if (el) el.scrollTop = el.scrollHeight; if (Date.now() < pinUntil) requestAnimationFrame(step); else pinUntil = 0; };
+    requestAnimationFrame(step);
+  }
   function fitViewport() {
     if (!vv) return;
     if (document.body.classList.contains('kb-open')) {
-      document.documentElement.style.setProperty('--app-h', `${Math.round(vv.height)}px`);
-      window.scrollTo(0, 0); scrollThread();
+      const h = `${Math.round(vv.height)}px`;
+      if (document.documentElement.style.getPropertyValue('--app-h') !== h) {
+        // iPhone slides the whole page up with the keyboard; when it settles, slide the header back in rather than popping it.
+        const pushed = vv.offsetTop > 20 || window.scrollY > 20;
+        document.documentElement.style.setProperty('--app-h', h);
+        if (pushed) { const head = $('.chat-head'); if (head) { head.classList.remove('settle'); void head.offsetWidth; head.classList.add('settle'); } }
+      }
+      window.scrollTo(0, 0); pinThread();
     } else document.documentElement.style.removeProperty('--app-h');
     // A sheet with a field in focus is sized to the visible area, so the keyboard never covers it.
     const sh = $('#sheet'), fit = document.body.classList.contains('field-open') && ui.sheet;
@@ -1608,13 +1625,13 @@
   const isField = el => el && el.matches && el.matches('input:not([type=checkbox]):not([type=radio]):not([type=range]), textarea, select');
   document.addEventListener('focusin', e => {
     if (isField(e.target)) document.body.classList.add('field-open');
-    if (isTyping(e.target)) { document.body.classList.add('kb-open'); setTimeout(fitViewport, 50); setTimeout(scrollThread, 300); }
+    if (isTyping(e.target)) { document.body.classList.add('kb-open'); pinThread(); setTimeout(fitViewport, 50); }
     else if (isField(e.target) && e.target.closest('#sheet')) { setTimeout(fitViewport, 50); setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 350); }
   });
   document.addEventListener('focusout', e => {
     // Wait a moment, so a tap on a button below the field lands before the layout changes back.
     if (isField(e.target)) setTimeout(() => { if (!isField(document.activeElement)) { document.body.classList.remove('field-open'); fitViewport(); } }, 150);
-    if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); scrollThread(); } }, 80);
+    if (isTyping(e.target)) setTimeout(() => { if (!isTyping(document.activeElement)) { document.body.classList.remove('kb-open'); fitViewport(); pinThread(); } }, 80);
     // iPhone sometimes leaves the page nudged up after typing in a form field; put it back.
     else if (e.target.matches && e.target.matches('input, textarea, select')) setTimeout(() => { if (!document.activeElement || !document.activeElement.matches('input, textarea, select')) window.scrollTo(0, 0); }, 120);
   });

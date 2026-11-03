@@ -43,6 +43,11 @@ SCENARIOS = {
               "my mom went through it at like 50",
               "I'd just like to know if HRT is an option for me",
               "47"],
+    # One long voice-note style answer: Cura should pull out several fields at once and only ask what's missing.
+    "storyvoice": [("action", "story-start"),
+                   "okay so um it started maybe a year and a half ago when I was 46, my periods went from every 28 days to like every 40 or 50, last one was about six weeks ago. night sweats are the worst and the anxiety, I never used to be anxious. I tried cutting caffeine which helped a little. my mum had early menopause I think around 45. I had my gallbladder out years ago but nothing else",
+                   "mainly I just want to sleep through the night again",
+                   "thanks that's everything"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),
