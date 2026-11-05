@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "cura-local",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": ["SEED=1", "VOICE=1", "CIRCLE_OPEN=1", "python3", "-I", "dev/mock-server.py", ".", "8795"],
+      "port": 8795
+    },
+    {
+      "name": "cura-new-user",
+      "runtimeExecutable": "/usr/bin/env",
+      "runtimeArgs": ["VOICE=1", "python3", "-I", "dev/mock-server.py", ".", "8796"],
+      "port": 8796
+    }
+  ]
+}

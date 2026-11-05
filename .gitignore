@@ -10,5 +10,6 @@
 .DS_Store
 *.log
 
-# Local Claude Code settings
-.claude/
+# Local Claude Code settings (except the shared local-server list)
+.claude/*
+!.claude/launch.json

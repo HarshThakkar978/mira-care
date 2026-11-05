@@ -23,7 +23,7 @@ Data lives in Upstash Redis, keyed by a random device id stored in the browser (
 
 Text Cura on WhatsApp instead of opening the site. Cura uses Claude to understand messages like "hot flashes last night, maybe a 7" and saves them as structured symptoms, period starts, check-ins and visit notes.
 
-- `api/twilio.js` receives WhatsApp messages through Twilio (works with Twilio's free WhatsApp Sandbox, no business verification). Set the sandbox's "When a message comes in" URL to `https://curadaily.vercel.app/api/twilio`.
+- `api/twilio.js` receives WhatsApp messages through Twilio (works with Twilio's free WhatsApp Sandbox, no business verification). Set the sandbox's "When a message comes in" URL to `https://curadaily.com/api/twilio`.
 - `api/whatsapp.js` is the same thing for Meta's WhatsApp Cloud API directly, which needs Meta business verification.
 - Visit `/api/twilio` or `/api/whatsapp` in a browser to see which settings are still missing.
 - `api/_lib/respond.js` loads a person's data, gets Cura's reply and saves it. Every channel calls it.
@@ -34,16 +34,15 @@ Settings are listed in [`.env.example`](.env.example). Text **DELETE ALL** to Cu
 
 ## Run locally
 
-The app needs the `/api` functions, so run it with the Vercel CLI (`vercel dev`) after linking the project and pulling its environment variables.
+No keys needed: `SEED=1 VOICE=1 CIRCLE_OPEN=1 python3 dev/mock-server.py . 8795`, then open http://localhost:8795. See [CLAUDE.md](CLAUDE.md) for how the team works (branches, testing, previews).
 
 ## Developer tools (`dev/`, not deployed)
 
 - `sh dev/syntax-check.sh`: syntax-checks all JavaScript using macOS's built-in JavaScriptCore.
-- `jsc -m dev/mira-logic.test.mjs` (or `node dev/mira-logic.test.mjs`): tests Cura's conversation logic with a fake Claude.
-- `jsc -m dev/community-logic.test.mjs`: tests the community's grouping rules, idea ranking, plan and calendar file.
-- `SEED=1 python3 dev/mock-server.py . 8790`: runs the app locally with a fake backend, sample data and a sample community (`DUE=1` makes plan check-ins due right away; admin password `test123`).
-- `python3 dev/replay.py`: replays sample conversations against the live Cura, then erases them.
+- `jsc -m dev/<name>.test.mjs` (or `node`): `mira-logic` (Cura's conversation logic with a fake Claude), `community-logic` (grouping, ideas, plan, calendar), `story` ("your story" questions and timing test).
+- `python3 dev/mock-server.py . <port>` with `SEED=1` (sample data), `VOICE=1`, `CIRCLE_OPEN=1`, `STORY=off`, `DUE=1` (plan check-ins due now). Admin password `test123`.
+- `python3 dev/replay.py [scenario ...]`: real-AI conversations against the live site, or a preview with `CURA_URL` and `CURA_COOKIE`; erases its test users afterwards.
 
 ## Deploy to Vercel
 
-Pushing to `main` deploys automatically. The project needs an Upstash Redis store connected (Vercel → Storage) and the environment variables listed in [`.env.example`](.env.example). Cura organizes personal notes and does not give medical advice.
+Pushing to `main` deploys to https://curadaily.com; pushing to `staging` makes a private preview. The project needs an Upstash Redis store connected (Vercel → Storage) and the environment variables listed in [`.env.example`](.env.example). Cura organizes personal notes and does not give medical advice.
