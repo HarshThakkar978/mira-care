@@ -1,6 +1,6 @@
 // Tests the community's pure logic and Cura's idea card (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/community-logic.test.mjs
-import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len, privateText } from '../api/_lib/community-logic.js';
+import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len, privateText, circleIsOpen } from '../api/_lib/community-logic.js';
 import { handleIncoming, freshUser, normalizeUser, mergeUsers } from '../api/_lib/mira.js';
 import { visitNudge, recapData, tipNews, recapText } from '../api/_lib/nudges.js';
 
@@ -25,9 +25,12 @@ const today = '2026-10-27';
   check(checkGrouping({ groups: [{ id: 'g1', members: ['m1', 'm2', 'm3', 'm4', 'm4'] }] }, ['g1'], ids) === null, 'nobody twice');
   check(checkGrouping({ groups: [{ id: 'g1', members: ['m1', 'm2', 'm3', 'zz'] }] }, ['g1'], ids) === null, 'unknown members rejected');
   const six = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-  const split = checkGrouping({ groups: [{ id: 'g1', name: 'Sleep', members: ['m1', 'm2', 'm3'] }, { id: 'new', name: 'Mood', members: ['m4', 'm5', 'm6'] }] }, ['g1'], six);
-  check(split && split.length === 2 && split[0].id === 'g1' && split[1].id === null, 'split into two groups of three, new group gets no id');
-  check(checkGrouping({ groups: [{ id: 'g1', members: ['m1', 'm2', 'm3', 'm4', 'm5'] }, { id: 'new', members: ['m6'] }] }, ['g1'], six) === null, 'no group of one');
+  check(checkGrouping({ groups: [{ id: 'g1', members: ['m1', 'm2', 'm3'] }, { id: 'new', members: ['m4', 'm5', 'm6'] }] }, ['g1'], six) === null, 'fewer than 12: everyone shares one Circle');
+  const twelve = Array.from({ length: 12 }, (_, i) => 'p' + i);
+  const split = checkGrouping({ groups: [{ id: 'g1', name: 'Sleep', members: twelve.slice(0, 6) }, { id: 'new', name: 'Mood', members: twelve.slice(6) }] }, ['g1'], twelve);
+  check(split && split.length === 2 && split[0].id === 'g1' && split[1].id === null, '12 people can split into two groups of six, new group gets no id');
+  check(checkGrouping({ groups: [{ id: 'g1', members: twelve.slice(0, 8) }, { id: 'new', members: twelve.slice(8) }] }, ['g1'], twelve) === null, 'no new group smaller than 6');
+  check(!circleIsOpen({ members: [1, 2, 3] }) && circleIsOpen({ members: [1, 2, 3, 4] }) && circleIsOpen({ members: [1], openedAt: 'x' }), 'a Circle opens at 4 members and stays open');
 
   // Ideas for a person
   const user = normalizeUser(freshUser());

@@ -1,7 +1,7 @@
 // Keeps the app shell available offline. Pages load fresh from the network when possible;
 // the cached copy is only a fallback. API calls are never cached.
-const CACHE = 'mira-shell-v27';
-const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'mira-shell-v28';
+const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/logo-256.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -21,15 +21,17 @@ self.addEventListener('fetch', e => {
   );
 });
 
-// Daily reminder notifications sent by /api/reminders.
+// Notifications sent by the server (daily reminder, visit nudges, the Circle opening).
 self.addEventListener('push', e => {
   let msg = {};
   try { msg = e.data ? e.data.json() : {}; } catch { msg = { body: e.data && e.data.text() }; }
-  e.waitUntil(self.registration.showNotification(msg.title || 'Cura', {
+  // One notification per kind: a new daily check-in replaces yesterday's instead of piling up.
+  e.waitUntil(self.registration.showNotification(msg.title || 'Check-in', {
     body: msg.body || 'How are you feeling today?',
-    icon: '/icons/icon-192.png',
-    badge: '/icons/icon-192.png',
-    tag: 'mira-daily',
+    icon: '/icons/logo-256.png',
+    tag: msg.tag || 'cura-daily',
+    renotify: false,
+    timestamp: Date.now(),
     data: { url: msg.url || '/#chat' }
   }));
 });

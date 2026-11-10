@@ -9,9 +9,10 @@ import Anthropic from '@anthropic-ai/sdk';
 import { rcmd, getValue, setValue, getUsers, saveUser, allUserIds, deleteUser, deleteAccount } from './store.js';
 import { MODEL, loadUser, storeUser, today } from './respond.js';
 import { normalizeUser } from './mira.js';
+import { sendToUser } from './push.js';
 import {
   canonSymptom, memberProfile, groupSummary, nearestGroup, checkGrouping, uniqueAlias, welcomeText, freshCommunity, ideasFor, addDays,
-  HOW_WELL, WHEN, TIP_ANSWERS, ANSWER_HOW, ONE_GROUP_BELOW, privateText
+  HOW_WELL, WHEN, TIP_ANSWERS, ANSWER_HOW, ONE_GROUP_BELOW, MIN_GROUP, OPEN_AT, circleIsOpen, privateText
 } from './community-logic.js';
 
 const GROUPS = 'cura:groups', TIPS = 'cura:tips';
@@ -120,6 +121,8 @@ async function dropReactionsBy(groupId, key) {
   }
 }
 
+export async function groupOpen(groupId) { return circleIsOpen((await loadGroups()).find(g => g.id === groupId)); }
+
 // What a member sees: names come from the group's member list (so switching to anonymous renames old messages too).
 export async function groupView(key, user, since = '') {
   const g = (await loadGroups()).find(x => x.id === user.community.groupId);
@@ -128,10 +131,10 @@ export async function groupView(key, user, since = '') {
   const msgs = await groupMessages(g.id);
   if (msgs.length) await rcmd(['SET', readKey(key), msgs[msgs.length - 1].at]);
   const messages = msgs.filter(m => !since || m.at >= since).map(m => ({
-    id: m.id, at: m.at, text: m.text, kind: m.kind || '', cura: m.from === 'cura', mine: m.from === key,
-    name: m.from === 'cura' ? 'Cura' : m.from === key ? displayName(user) : names.get(m.from) || 'Former member'
+    id: m.id, at: m.at, text: m.text, kind: m.kind || '', cura: m.from === 'cura' || m.from === 'team', team: m.from === 'team', mine: m.from === key,
+    name: m.from === 'cura' ? 'Cura' : m.from === 'team' ? 'Cura team' : m.from === key ? displayName(user) : names.get(m.from) || 'Former member'
   }));
-  return { group: { id: g.id, name: g.name, focus: g.focus, size: g.members.length, members: g.members.map(m => (m.key === key ? `${m.name} (you)` : m.name)) }, messages, reactions: await reactionsFor(g.id, key) };
+  return { group: { id: g.id, name: g.name, focus: g.focus, size: g.members.length, open: circleIsOpen(g), openAt: OPEN_AT, members: g.members.map(m => (m.key === key ? `${m.name} (you)` : m.name)) }, messages, reactions: await reactionsFor(g.id, key) };
 }
 
 export async function unreadCount(key, user) {
@@ -147,11 +150,23 @@ export async function joinCommunity(key, user, { focus, anonymous }) {
   const c = user.community;
   c.focus = cleanFocus(focus);
   c.anonymous = !!anonymous || !user.profile.name;
-  const { group, reason } = await placeMember(key, user);
+  const { group, reason, justOpened } = await placeMember(key, user);
   Object.assign(c, { joined: true, groupId: group.id, reason, joinedAt: c.joinedAt || nowIso(), notice: null });
   await storeUser(key, user);
   await postMessage(group.id, 'cura', welcomeText(displayName(user), c.focus), 'welcome');
+  if (justOpened) await announceOpen(group, key).catch(e => console.error('circle open notice failed', e));
   return group;
+}
+
+// The moment a forming Circle reaches OPEN_AT members: tell the ones who were waiting (a notification on their phone;
+// the app shows the open Circle next time they look). The person who just joined sees it straight away.
+async function announceOpen(group, joinerKey) {
+  const others = group.members.filter(m => m.key !== joinerKey);
+  for (const [k, u] of await usersByKey(others.map(m => m.key))) {
+    if (!u.reminder.subscriptions.length) continue;
+    await sendToUser(u, { title: 'Your Circle is open', body: 'Everyone is here. Come say hi, or just read along.', url: '/#community', tag: 'cura-circle' });
+    await storeUser(k, u);
+  }
 }
 
 // Puts a new member in the best existing group. Claude only chooses among groups; new groups are made
@@ -176,8 +191,10 @@ async function placeMember(key, user) {
     }
     user.community.alias = uniqueAlias(new Set(group.members.map(m => m.name)), user.community.alias);
     group.members.push({ key, name: displayName(user), joinedAt: nowIso() });
+    const justOpened = !group.openedAt && group.members.length >= OPEN_AT;
+    if (justOpened) group.openedAt = nowIso();
     await saveGroups(groups);
-    return { group, reason };
+    return { group, reason, justOpened };
   });
 }
 
@@ -455,8 +472,8 @@ Below are the current groups and an anonymous summary of each member: the sympto
 
 Decide how the groups should look today:
 - Keep things stable. People get to know their group, so only move someone when it clearly helps them.
-- Split a group when it has more than 12 members, or when it has 8 or more and clearly holds different symptom profiles (for example mostly sleep and night sweats vs mostly mood and anxiety). Groups should end up with 4-12 members.
-- Move the members of a group with fewer than 3 people into the closest group.
+- Groups work best with 6-10 members. Split a group when it has more than 12 members, or when it has 12 or more and clearly holds different symptom profiles (for example mostly sleep and night sweats vs mostly mood and anxiety). Only split if every new group gets at least ${MIN_GROUP} members.
+- Move the members of a group with fewer than ${MIN_GROUP} people into the closest group.
 - Match on focus and hardest symptoms first, then logged symptoms and intensity; when those match about equally, keep people at a similar stage (periods changing, skipping or stopped) together. If someone doesn't closely match anyone, put them with the nearest symptoms; nobody is ever left out.
 - With fewer than ${ONE_GROUP_BELOW} members in total, everyone stays in one group.
 Return every member exactly once. Keep an existing group's id when it continues (you may update its name and focus to fit its members); use id "new" for a new group.
@@ -586,6 +603,25 @@ export async function adminCommunity() {
 export async function adminGroupMessages(groupId) {
   const g = (await loadGroups()).find(x => x.id === groupId);
   const names = new Map((g ? g.members : []).map(m => [m.key, m.name]));
-  return (await groupMessages(groupId, MSG_KEEP)).map(m => ({ id: m.id, at: m.at, text: m.text, kind: m.kind || '', from: m.from, name: m.from === 'cura' ? 'Cura' : names.get(m.from) || 'Former member' }));
+  return (await groupMessages(groupId, MSG_KEEP)).map(m => ({ id: m.id, at: m.at, text: m.text, kind: m.kind || '', from: m.from, name: m.from === 'cura' ? 'Cura' : m.from === 'team' ? 'Cura team' : names.get(m.from) || 'Former member' }));
+}
+
+// ---------- Hosting (admin): the team posts as "Cura team", or approves a reply Cura drafted ----------
+export async function hostPost(groupId, text, as) {
+  if (!(await loadGroups()).some(g => g.id === groupId)) throw Object.assign(new Error('Group not found'), { status: 404 });
+  return postMessage(groupId, as === 'cura' ? 'cura' : 'team', String(text).trim().slice(0, 1000), 'host');
+}
+const DRAFT_PROMPT = `You host a small private peer-support group of women going through perimenopause, as Cura. A member posted something nobody has answered yet. Write the reply a warm, socially skilled host would send in a group chat.
+- Reply to what she actually said, specifically. Sound like a person, not a support bot: no stock phrases ("Thanks for sharing", "Great question", "I hear you"), no lists, no emojis unless one fits naturally.
+- Match her length and energy. Usually one or two short sentences, under 35 words. If it's natural, invite the others in ("Anyone else find…?").
+- Use her group name only if it reads naturally, and never anyone's real details. No diagnoses, medicines or doses.`;
+export async function hostDraft(groupId, msgId) {
+  const msgs = await adminGroupMessages(groupId);
+  const i = msgs.findIndex(m => m.id === msgId);
+  if (i < 0) throw Object.assign(new Error('Message not found'), { status: 404 });
+  const recent = msgs.slice(Math.max(0, i - 8), i).map(m => ({ from: m.name, text: m.text }));
+  const out = await askJson(`${DRAFT_PROMPT}\n\n<earlier>${JSON.stringify(recent)}</earlier>\n<post from="${msgs[i].name}">${msgs[i].text}</post>`,
+    { type: 'object', additionalProperties: false, required: ['reply'], properties: { reply: { type: 'string' } } });
+  return String((out && out.reply) || '').trim();
 }
 export const adminDeleteMessage = (groupId, msgId) => rewriteMessages(groupId, m => m.id !== msgId);

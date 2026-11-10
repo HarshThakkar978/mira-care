@@ -26,21 +26,33 @@ export function localNow(tz) {
   return { hour, date: localDate(zone) };
 }
 
+// Notifications read like a well-made app's: iPhone already shows "Cura" and the icon in the header, so the title is
+// a short, plain label (no greeting, no emoji) and the body is one personal line in Cura's voice.
+const partOfDay = hour => (hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening');
 export function reminderMessage(user, date) {
-  const name = user.profile.name ? `, ${user.profile.name}` : '';
+  const first = String(user.profile.name || '').trim().split(/\s+/)[0];
   const appt = user.profile.appointmentDate;
   const tomorrow = new Date(date + 'T12:00:00Z'); tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
   if (appt && appt === tomorrow.toISOString().slice(0, 10)) {
-    return { title: 'Your appointment is tomorrow', body: 'Want Cura to pull your notes into an agenda? Tap to open Visits.', url: '/#visit' };
+    return { title: 'Appointment tomorrow', body: 'Want Cura to turn your notes into an agenda for it?', url: '/#visit', tag: 'cura-visit' };
   }
   // A message Cura left today (a visit nudge or the week recap) comes first.
   const note = [...(user.transcript || [])].reverse().find(m => m.from === 'mira' && (m.kind === 'nudge' || m.kind === 'recap') && String(m.at).slice(0, 10) >= date);
-  if (note) return { title: note.kind === 'recap' ? 'Your week with Cura 💜' : `Hi${name} 👋`, body: note.text.split('\n')[0].slice(0, 140), url: note.cta && note.cta.route ? `/#${note.cta.route}` : '/#chat' };
+  if (note) {
+    const line = note.text.split('\n').map(x => x.replace(/^[•\s]+/, '').trim()).filter(Boolean);
+    return note.kind === 'recap'
+      ? { title: 'Your week', body: (line[1] || line[0] || '').slice(0, 140), url: '/#chat', tag: 'cura-recap' }
+      : { title: 'From Cura', body: (line[0] || '').slice(0, 140), url: note.cta && note.cta.route ? `/#${note.cta.route}` : '/#chat', tag: 'cura-nudge' };
+  }
+  const title = `${partOfDay(Number(user.reminder.hour) || 20)} check-in`;
   const todo = (user.plan || []).filter(p => p.status === 'active' && !(p.done || []).includes(date));
-  if (todo.length) return { title: `Hi${name} 👋`, body: `How are you feeling today? And on your plan: ${todo[0].title.replace(/\.$/, '')}${todo.length > 1 ? ` (+${todo.length - 1} more)` : ''} 🌿`, url: '/#today' };
-  const lines = ['How are you feeling today? Tap to tell Cura.', 'A quick check-in takes 10 seconds 💚', 'Anything you noticed today? Cura will keep track.'];
-  const pick = lines[new Date(date + 'T12:00:00Z').getUTCDate() % lines.length];
-  return { title: `Hi${name} 👋`, body: pick, url: '/#chat' };
+  if (todo.length) return { title, body: `How are you feeling${first ? `, ${first}` : ''}? Also on your plan: ${todo[0].title.replace(/\.$/, '').toLowerCase()}.`, url: '/#today', tag: 'cura-daily' };
+  const lines = [
+    `How are you feeling today${first ? `, ${first}` : ''}? One tap is enough.`,
+    'Anything you noticed today? Cura will keep track of it.',
+    `How was today${first ? `, ${first}` : ''}? A quick check-in keeps your notes complete.`
+  ];
+  return { title, body: lines[new Date(date + 'T12:00:00Z').getUTCDate() % lines.length], url: '/#chat', tag: 'cura-daily' };
 }
 
 // Sends to every saved device (or only the one with `onlyEndpoint`); drops subscriptions the browser has revoked.

@@ -2,7 +2,7 @@
 import crypto from 'node:crypto';
 import { normalizeUser } from './_lib/mira.js';
 import { allUserIds, getUsers, getUser, saveUser, storeConfigured } from './_lib/store.js';
-import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings, freshStartCircle } from './_lib/community.js';
+import { eraseUser, adminCommunity, adminGroupMessages, adminDeleteMessage, hostPost, hostDraft, saveTip, addTeamTips, regroup, questionsOfTheDay, loadSettings, saveSettings, freshStartCircle } from './_lib/community.js';
 import { checkinDays } from './_lib/community-logic.js';
 import { storyStats } from './_lib/story.js';
 
@@ -97,6 +97,13 @@ export async function POST(request) {
     return json({ circleEarly: raw.circleEarly });
   }
   if (body.action === 'group-msgs') return json({ messages: await adminGroupMessages(String(body.groupId || '')) });
+  if (body.action === 'host-post') {
+    const text = String(body.text || '').trim();
+    if (!text) return json({ error: 'Write something first' }, 400);
+    await hostPost(String(body.groupId || ''), text, body.as === 'cura' ? 'cura' : 'team');
+    return json({ messages: await adminGroupMessages(String(body.groupId || '')) });
+  }
+  if (body.action === 'host-draft') return json({ draft: await hostDraft(String(body.groupId || ''), String(body.msgId || '')) });
   if (body.action === 'msg-delete') return json({ deleted: await adminDeleteMessage(String(body.groupId || ''), String(body.msgId || '')) });
   if (body.action === 'tip-save') {
     const tip = await saveTip(String(body.id || ''), { fields: body.fields || {}, status: body.status, remove: body.remove === true });

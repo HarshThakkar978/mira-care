@@ -208,13 +208,20 @@
     const msgs = d.messages.map((m, i) => {
       const prev = d.messages[i - 1];
       const stamp = !prev || new Date(m.at) - new Date(prev.at) > 3600000 ? `<div class="stamp">${esc(fullTime(m.at))}</div>` : '';
-      return `${stamp}<div class="sender">${esc(m.name)}${m.from !== 'cura' ? ` <button class="btn small ghost" style="min-height:22px;padding:0 6px;font-size:11px" data-act="msg-del" data-gid="${id}" data-id="${m.id}">${confirmId === 'msg' + m.id ? 'Tap again' : 'Delete'}</button>` : ''}</div><div class="msg ${m.from === 'cura' ? 'them cura' : 'them'} tail">${fmtMsg(m.text)}</div>`;
+      const needs = unanswered(d.messages, i) ? ` <span class="pill" style="font-size:11px">Needs a reply</span> <button class="btn small ghost" style="min-height:22px;padding:0 6px;font-size:11px" data-act="host-draft" data-gid="${id}" data-id="${m.id}">Draft a reply</button>` : '';
+      return `${stamp}<div class="sender">${esc(m.name)}${needs}${m.from !== 'cura' && m.from !== 'team' ? ` <button class="btn small ghost" style="min-height:22px;padding:0 6px;font-size:11px" data-act="msg-del" data-gid="${id}" data-id="${m.id}">${confirmId === 'msg' + m.id ? 'Tap again' : 'Delete'}</button>` : ''}</div><div class="msg ${m.from === 'cura' || m.from === 'team' ? 'them cura' : 'them'} tail">${fmtMsg(m.text)}</div>`;
     }).join('') || '<p class="small muted">No messages yet.</p>';
     $('#root').innerHTML = `${top(`<button class="btn small ghost" data-act="go-community">← Community</button>`)}
       <div class="page-head"><div class="eyebrow">Group</div><h1 class="title">${esc(g ? g.name : 'Group')}</h1><p class="sub">${esc(g ? g.focus : '')}</p></div>
-      <div class="card"><div class="convo" id="convo">${msgs}</div></div>`;
+      <div class="card"><div class="convo" id="convo">${msgs}</div></div>
+      <div class="card host-card"><h2 class="card-title">Host this Circle</h2>
+        <p class="small muted">Members see posts from the team as <b>Cura team</b>. "Draft a reply" under a post asks Cura for a suggestion; nothing is posted until you press a Post button.</p>
+        <textarea class="input" id="hostText" rows="3" placeholder="Write to the group…"></textarea>
+        <div class="row" style="gap:8px;margin-top:8px;flex-wrap:wrap;justify-content:flex-start"><button class="btn small primary" data-act="host-post" data-gid="${id}" data-as="team">Post as Cura team</button><button class="btn small ghost" data-act="host-post" data-gid="${id}" data-as="cura">Post as Cura</button><span class="small muted" id="hostNote"></span></div></div>`;
     const c = $('#convo'); if (c) c.scrollTop = c.scrollHeight;
   }
+  // A member's post that nobody (another member, Cura or the team) has answered yet.
+  const unanswered = (list, i) => list[i].from !== 'cura' && list[i].from !== 'team' && !list.slice(i + 1).some(m => m.from !== list[i].from && m.kind !== 'welcome');
 
   function alertBack(msg) { $('#root').innerHTML = `${top('<button class="btn small ghost" data-act="back">← All users</button>')}<p class="err">${esc(msg)}</p>`; }
 
@@ -228,6 +235,16 @@
     if (act === 'go-users') load();
     if (act === 'go-community') loadCommunity();
     if (act === 'group-msgs') openGroup(a.dataset.id);
+    if (act === 'host-draft') {
+      const note = $('#hostNote'), box = $('#hostText'); if (note) note.textContent = 'Cura is drafting…';
+      api('host-draft', { groupId: a.dataset.gid, msgId: a.dataset.id }).then(r => { if (box) { box.value = r.draft; box.focus(); } if (note) note.textContent = 'Draft ready. Edit it, then post (or clear it).'; }).catch(err => { if (note) note.textContent = ''; alert(err.message); });
+    }
+    if (act === 'host-post') {
+      const box = $('#hostText'), text = box ? box.value.trim() : '';
+      if (!text) { alert('Write something first'); return; }
+      if (!confirm(`Post this to the group as ${a.dataset.as === 'cura' ? 'Cura' : 'Cura team'}?\n\n${text}`)) return;
+      api('host-post', { groupId: a.dataset.gid, text, as: a.dataset.as }).then(() => openGroup(a.dataset.gid)).catch(err => alert(err.message));
+    }
     if (act === 'circle-open') api('circle-open', { open: a.dataset.open === '1' }).then(loadCommunity).catch(err => alert(err.message));
     if (act === 'circle-fresh') {
       if (prompt('This deletes every group chat, reaction and member tip, and takes everyone out of the Circle. It can\'t be undone.\n\nType FRESH START to go ahead.') !== 'FRESH START') return;

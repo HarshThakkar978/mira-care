@@ -1,9 +1,13 @@
 // Pure helpers for Cura's community (no database, no Claude), so they can be tested offline.
 // Groups, tips and plans are plain objects; community.js loads and saves them.
 
-export const MIN_GROUP = 3;          // smallest group once there are enough people to split
-export const ONE_GROUP_BELOW = 6;    // fewer members than this: everyone stays in one group
-export const MAX_GROUP_HARD = 20;    // a grouping with a bigger group is rejected
+// Sizes from peer-support research (support groups work best at about 6-12; in health groups roughly half the
+// members mostly read, so a group needs 4+ before there's reliably someone to talk to).
+export const OPEN_AT = 4;            // a Circle's chat opens once it has this many members (before that it's "forming")
+export const MIN_GROUP = 6;          // when groups split, every new group starts with at least this many
+export const ONE_GROUP_BELOW = 12;   // fewer members than this: everyone shares one Circle
+export const MAX_GROUP_HARD = 14;    // a grouping with a bigger group is rejected (aim for 6-10, cap 12)
+export const circleIsOpen = group => !!group && (!!group.openedAt || group.members.length >= OPEN_AT);
 export const HOW_WELL = ['a_lot', 'some', 'not_much', 'made_worse', 'unclear'];
 export const WHEN = ['morning', 'midday', 'evening', 'bedtime', 'anytime'];
 export const TIP_ANSWERS = ['Helped a lot', 'Helped a little', 'Not really'];

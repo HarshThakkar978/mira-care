@@ -67,9 +67,10 @@ def seed_group():
 def group_view(u, since=""):
     seed_group()
     me = alias(u)
-    msgs = [{"id": m["id"], "at": m["at"], "text": m["text"], "kind": "", "cura": m["from"] == "cura", "mine": m["from"] == "me",
-             "name": "Cura" if m["from"] == "cura" else me if m["from"] == "me" else m["from"]} for m in GMSGS if not since or m["at"] >= since]
-    return {"group": {**{k: GROUP[k] for k in ("id", "name", "focus")}, "size": len(GROUP["members"]) + 1, "members": GROUP["members"] + [me + " (you)"]},
+    msgs = [{"id": m["id"], "at": m["at"], "text": m["text"], "kind": "", "cura": m["from"] in ("cura", "team"), "team": m["from"] == "team", "mine": m["from"] == "me",
+             "name": "Cura" if m["from"] == "cura" else "Cura team" if m["from"] == "team" else me if m["from"] == "me" else m["from"]} for m in GMSGS if not since or m["at"] >= since]
+    size = len(GROUP["members"]) + 1 if not os.environ.get("FORMING") else 2
+    return {"group": {**{k: GROUP[k] for k in ("id", "name", "focus")}, "size": size, "open": size >= 4, "openAt": 4, "members": GROUP["members"] + [me + " (you)"]},
             "messages": msgs, "notice": u["community"].get("notice"), "reason": u["community"].get("reason", ""),
             "reactions": {mid: [{"e": e, "n": len(who), "mine": u is not None and id(u) in who} for e, who in r.items() if who] for mid, r in REACTS.items()}}
 
@@ -265,7 +266,12 @@ def admin(body):
                             "common": [{"name": "night sweats", "members": 3, "avg": 6.5}, {"name": "trouble sleeping", "members": 2, "avg": 5.0}],
                             "members": [{"key": "web-x", "name": n, "joinedAt": now().isoformat(), "focus": ["Night sweats"]} for n in GROUP["members"]], "questions": []}], "tips": tips}, 200
     if a == "group-msgs":
-        seed_group(); return {"messages": [{**m, "name": "Cura" if m["from"] == "cura" else m["from"]} for m in GMSGS]}, 200
+        seed_group(); return {"messages": [{**m, "name": "Cura" if m["from"] == "cura" else "Cura team" if m["from"] == "team" else m["from"]} for m in GMSGS]}, 200
+    if a == "host-post":
+        GMSGS.append({"id": nid(), "from": "cura" if body.get("as") == "cura" else "team", "text": body["text"], "at": now().isoformat()})
+        return {"messages": GMSGS}, 200
+    if a == "host-draft":
+        return {"draft": "Waking up soaked is the worst, Maya. Anyone found something that helps on those nights?"}, 200
     if a == "msg-delete":
         GMSGS[:] = [m for m in GMSGS if m["id"] != body["msgId"]]; return {"deleted": 1}, 200
     if a == "tip-save":

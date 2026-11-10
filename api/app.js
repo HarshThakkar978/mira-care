@@ -9,9 +9,9 @@ import { verifyGoogleToken } from './_lib/google.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 import {
   joinCommunity, updateCommunity, leaveCommunity, eraseUser, groupView, unreadCount, postMessage, extractTips,
-  displayName, chatContext, loadTips, noteTipUse, calendarToken, allowPost, loadSettings, toggleReaction
+  displayName, chatContext, loadTips, groupOpen, noteTipUse, calendarToken, allowPost, loadSettings, toggleReaction
 } from './_lib/community.js';
-import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess, circleInvite } from './_lib/community-logic.js';
+import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess } from './_lib/community-logic.js';
 import { storyOffer, storyStart, storySeen, storyLater, storyReminder } from './_lib/story.js';
 import { transcribe, voiceConfigured } from './_lib/voice.js';
 
@@ -31,11 +31,11 @@ const isDate = v => typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const newId = () => crypto.randomUUID().replace(/-/g, '').slice(0, 12);
 // "Your story" (live since 2026-11-03).
 const storyOn = () => process.env.CURA_STORY !== 'off'; // set CURA_STORY=off in Vercel to hide it again
-// After Cura's reply: at most one extra message, the Circle invitation or the one "tell me your story" reminder.
-// It also marks the story invitation as due, which the app shows as a pop-up.
+// After Cura's reply: at most one extra message, the one "tell me your story" reminder. It also marks the story
+// invitation as due, which the app shows as a pop-up. (The Circle opening is shown in the app, not as a message.)
 const afterReply = key => async u => {
   if (storyOn()) storyOffer(u, key);
-  return circleInvite(u, await loadSettings()) || (storyOn() ? storyReminder(u) : null);
+  return storyOn() ? storyReminder(u) : null;
 };
 const hasData = u => u.symptoms.length + u.cycleStarts.length + u.checkins.length + u.preNotes.length + u.postNotes.length + u.transcript.length > 0;
 
@@ -156,7 +156,7 @@ export async function POST(request) {
 
     if (action === 'test-push') {
       // The app sends this phone's own subscription, so the test proves this device works, not another one.
-      const sent = await sendToUser(user, { title: 'Cura test 💚', body: "Reminders are working. I'll check in at the time you picked.", url: '/#chat' }, typeof body.endpoint === 'string' ? body.endpoint : '');
+      const sent = await sendToUser(user, { title: 'Reminders are on', body: "You're all set. Cura will check in at the time you picked.", url: '/#chat', tag: 'cura-test' }, typeof body.endpoint === 'string' ? body.endpoint : '');
       await storeUser(key, user);
       return json({ sent, user: view(user) });
     }
@@ -217,6 +217,7 @@ export async function POST(request) {
       const text = String(body.text || '').trim().slice(0, 1000);
       if (!text) return json({ error: 'Empty message' }, 400);
       if (!user.community.joined || !user.community.groupId) return json({ error: 'Join the community first' }, 400);
+      if (!(await groupOpen(user.community.groupId))) return json({ error: 'Your Circle opens once 4 women have joined. We will let you know.' }, 409);
       if (!(await allowPost(key))) return json({ error: "That's a lot of messages for one hour. Take a breather and try again a bit later." }, 429);
       const msg = await postMessage(user.community.groupId, key, text);
       // Claude reads it for tips after the reply has gone out.

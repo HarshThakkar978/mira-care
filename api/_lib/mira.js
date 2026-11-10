@@ -1,6 +1,6 @@
 // Cura's brain: takes one incoming text, lets Claude log it with tools, returns the reply.
 // Channel-agnostic: the Cura app, WhatsApp, and later iMessage all call handleIncoming.
-import { freshCommunity, addDays, daysBetween, whenLabel } from './community-logic.js';
+import { freshCommunity, addDays, daysBetween, whenLabel, checkinDays, CIRCLE_DAYS } from './community-logic.js';
 import { freshStory, saveStory, storyNote, storyActive, PERIODS, STORY_FIELDS } from './story.js';
 
 const HISTORY_TURNS = 16;
@@ -70,7 +70,7 @@ They're using the Cura app at curadaily.com (it can be added to the iPhone or An
 - Today: their week at a glance (darker circles = stronger symptoms, rose = period started), a short insight from you, their plan (ideas they chose to try), next visit and days since their last period. A short recap of their week arrives in the chat on Sundays.
 - Cycle calendar (Today → Cycle, or Me → Cycle calendar): every day's symptoms and period starts; tap a day to add or remove things.
 - Visits (Me → Notes and agenda): things to bring up, an agenda you draft for the appointment (they can edit it), and after-visit notes. Me → Doctor summary is a one-page summary of the last 90 days they can print or save as a PDF to show their doctor.
-- Circle: a small private group of people with similar symptoms, matched by you. They choose to show their first name or appear anonymously. Members share what's helped; good tips become "Ideas for you" they can add to their plan, and the plan can go in their phone's calendar (Me → Calendar). The Circle opens after they've checked in on 3 different days.
+- Circle: a small private group of people with similar symptoms, matched by you. They choose to show their first name or appear anonymously. Members share what's helped; good tips become "Ideas for you" they can add to their plan, and the plan can go in their phone's calendar (Me → Calendar). They can join after checking in on 3 different days. A new Circle is "forming" until 4 women have joined, then its chat opens (they get a notification). The Cura team helps host it; their posts show as "Cura team".
 - Your story (Me → Your story): a few quick questions about their background (when changes started, periods, what they've tried) so your tips fit them better.
 - Me also has: their name; Account (Continue with Google, so their notes come back if they change phones); Appearance (light, dark or match the phone); Add to Home Screen; Use on another device (a private link that opens their Cura elsewhere); app tips and the welcome tour again; Download my data; Erase everything. The Privacy page is linked at the bottom of Me.
 - Privacy, if they ask: their notes are kept for them, and the small Cura team can see app data to keep it working and improve it. Circle messages are seen by their group. They can erase everything at any time (Me → Erase everything).
@@ -470,7 +470,8 @@ function planNote(user, today) {
     const progress = p.kept ? 'kept as a habit, it helped' : day > 7 ? 'a week is up, check-in due' : `day ${day} of 7`;
     return `"${p.title}" for ${p.symptom} (${whenLabel(p.when).toLowerCase()}, ${progress}${(p.done || []).includes(today) ? ', done today' : ''})`;
   });
-  const group = user.community && user.community.joined ? 'They are in a Cura community group.' : '';
+  const group = user.community && user.community.joined ? 'They are in a Cura Circle (their small peer group).'
+    : checkinDays(user) >= CIRCLE_DAYS || user.circleEarly ? "Their Circle (a small private peer group) is open but they haven't joined. Only if it truly fits (they feel alone, or ask what helps others), mention it in a few words; never as an announcement." : '';
   return [group, items.length ? `Ideas they're trying from the community: ${items.join('; ')}.` : ''].filter(Boolean).join(' ');
 }
 
