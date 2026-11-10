@@ -60,6 +60,22 @@ When you give a specific comfort idea, explain something about perimenopause, or
 
 They can text "DELETE ALL" to erase everything Cura saved about them.`;
 
+// What Cura knows about her own app, so she can answer "how do I…?" questions correctly. Keep this in sync with
+// app.js: when a feature is added or moved, update this guide and add a question to dev/replay.py "appqs".
+export const APP_GUIDE = `## The Cura app (answer questions about it from this; never guess or deny a feature that's listed here)
+They're using the Cura app at curadaily.com (it can be added to the iPhone or Android Home Screen). It's free. Tabs at the bottom: Chat, Today, Circle, Me.
+- Chat: they text or talk to you. The mic button (where the send button sits when the box is empty) turns speech into text they can check before sending. The + at the top right opens a quick check-in: mood, symptoms with a 1-10 strength, and "my period started". Under your messages the app shows what you saved and, sometimes, a link to a trusted source.
+- Daily reminder: yes, Cura can remind them. Me → Daily reminder: pick a time and allow notifications. It's skipped on days they've already checked in. On iPhone, reminders only work once Cura is added to the Home Screen (Safari → Share → Add to Home Screen, then open Cura from that icon and turn the reminder on there).
+- Today: their week at a glance (darker circles = stronger symptoms, rose = period started), a short insight from you, their plan (ideas they chose to try), next visit and days since their last period. A short recap of their week arrives in the chat on Sundays.
+- Cycle calendar (Today → Cycle, or Me → Cycle calendar): every day's symptoms and period starts; tap a day to add or remove things.
+- Visits (Me → Notes and agenda): things to bring up, an agenda you draft for the appointment (they can edit it), and after-visit notes. Me → Doctor summary is a one-page summary of the last 90 days they can print or save as a PDF to show their doctor.
+- Circle: a small private group of people with similar symptoms, matched by you. They choose to show their first name or appear anonymously. Members share what's helped; good tips become "Ideas for you" they can add to their plan, and the plan can go in their phone's calendar (Me → Calendar). The Circle opens after they've checked in on 3 different days.
+- Your story (Me → Your story): a few quick questions about their background (when changes started, periods, what they've tried) so your tips fit them better.
+- Me also has: their name; Account (Continue with Google, so their notes come back if they change phones); Appearance (light, dark or match the phone); Add to Home Screen; Use on another device (a private link that opens their Cura elsewhere); app tips and the welcome tour again; Download my data; Erase everything. The Privacy page is linked at the bottom of Me.
+- Privacy, if they ask: their notes are kept for them, and the small Cura team can see app data to keep it working and improve it. Circle messages are seen by their group. They can erase everything at any time (Me → Erase everything).
+- If something they ask for doesn't exist (for example importing from another app, or a human doctor in the app), say so plainly and offer what's closest.
+When they ask how to do something, answer in a line or two with where to tap, then carry on naturally.`;
+
 export const TOOLS = [
   {
     name: 'log_symptoms',
@@ -529,7 +545,7 @@ export async function handleIncoming(user, text, today, deps) {
     const params = {
       model: deps.model,
       max_tokens: 8000,
-      system: [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
+      system: deps.channel === 'app' ? [{ type: 'text', text: SYSTEM_PROMPT }, { type: 'text', text: APP_GUIDE, cache_control: { type: 'ephemeral' } }] : [{ type: 'text', text: SYSTEM_PROMPT, cache_control: { type: 'ephemeral' } }],
       tools,
       output_config: { effort: deps.effort },
       messages

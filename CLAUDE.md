@@ -19,6 +19,9 @@ reaches them. This file is for anyone on the team and their Claude Code.
   need any to work locally (the mock server fakes the backend).
 - **Check the screen at phone size after every UI change** (light and dark), and walk the whole flow, not
   just the part you changed. Things like the keyboard layout, sheets and tips interact.
+- **Cura must know her own app.** When you add, move or rename a feature, update `APP_GUIDE` in
+  `api/_lib/mira.js` and add a question to the `appqs` scenario in `dev/replay.py`. `dev/app-guide.test.mjs`
+  fails if a Me-tab row is missing from her guide.
 - Plain, friendly wording in the app. Cura never diagnoses or suggests medicines; see her prompt in
   `api/_lib/mira.js`.
 

@@ -52,6 +52,9 @@ SCENARIOS = {
     "storytaps": [("action", "story-start"), "1–2 years ago", "Gaps of 2+ months", "1–2 months ago",
                   "Hot flashes, Trouble sleeping, Brain fog", "Supplements, Exercise", "magnesium helped my sleep a bit, exercise not really",
                   "Thyroid condition", "I'd rather not say", "45–49", "Sleeping better, Talking to my doctor"],
+    # Questions about the app itself: Cura must know her own features (see APP_GUIDE in api/_lib/mira.js).
+    "appqs": ["can you remind me every day to check in?", "how do I show all this to my doctor?", "what's the circle?",
+              "can I talk instead of typing?", "how do I delete everything?", "can I import my data from Flo?"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),
