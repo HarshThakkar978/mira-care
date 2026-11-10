@@ -1,6 +1,6 @@
 // Tests the community's pure logic and Cura's idea card (free, offline).
 // Run: /System/Library/Frameworks/JavaScriptCore.framework/Versions/A/Helpers/jsc -m dev/community-logic.test.mjs
-import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len } from '../api/_lib/community-logic.js';
+import { circleAccess, circleInvite, canonSymptom, checkGrouping, ideasFor, addToPlan, recordOutcome, buildIcs, welcomeText, tipStats, uniqueAlias, symptomStats, utf8Len, privateText } from '../api/_lib/community-logic.js';
 import { handleIncoming, freshUser, normalizeUser, mergeUsers } from '../api/_lib/mira.js';
 import { visitNudge, recapData, tipNews, recapText } from '../api/_lib/nudges.js';
 
@@ -125,5 +125,9 @@ const today = '2026-10-27';
   check(acct.transcript.length === 2 && acct.transcript[1].text === 'later', 'merged chat is in time order');
   check(acct.profile.name === 'Ana' && acct.profile.appointmentDate === '2026-11-05', "account's name wins, empty fields filled from the phone");
 
+  // Private messages never use their Circle nickname
+  check(privateText('Thanks for sharing, Sage! How much has it helped?', { profile: { name: 'Judy' }, community: { alias: 'Sage' } }) === 'Thanks for sharing, Judy! How much has it helped?', 'nickname replaced with their real name');
+  check(privateText('Thanks for sharing, Sage! How much has it helped?', { profile: { name: '' }, community: { alias: 'Sage' } }) === 'Thanks for sharing! How much has it helped?', 'nickname dropped when the name is unknown');
+  check(privateText('Some people try sage tea.', { profile: { name: 'Judy' }, community: { alias: 'Sage' } }) === 'Some people try sage tea.', 'ordinary words left alone');
   log(fail ? `${fail} FAILED` : 'ALL PASSED');
 })().catch(e => log('CRASH', String(e), e.stack));

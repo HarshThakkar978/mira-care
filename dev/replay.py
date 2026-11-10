@@ -55,6 +55,9 @@ SCENARIOS = {
     # Questions about the app itself: Cura must know her own features (see APP_GUIDE in api/_lib/mira.js).
     "appqs": ["can you remind me every day to check in?", "how do I show all this to my doctor?", "what's the circle?",
               "can I talk instead of typing?", "how do I delete everything?", "can I import my data from Flo?"],
+    # Someone who's doing fine (like an early user): short, warm replies, no piling on.
+    "allgood": [("setup", "save_profile", {"name": "Judy"}), "Feeling good today", "Yes, I slept well.",
+                "Good at the moment.", "I'm attending a wedding this weekend.", "Nothing to report at this time.", "thanks"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),

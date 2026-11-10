@@ -11,7 +11,7 @@ import { MODEL, loadUser, storeUser, today } from './respond.js';
 import { normalizeUser } from './mira.js';
 import {
   canonSymptom, memberProfile, groupSummary, nearestGroup, checkGrouping, uniqueAlias, welcomeText, freshCommunity, ideasFor, addDays,
-  HOW_WELL, WHEN, TIP_ANSWERS, ANSWER_HOW, ONE_GROUP_BELOW
+  HOW_WELL, WHEN, TIP_ANSWERS, ANSWER_HOW, ONE_GROUP_BELOW, privateText
 } from './community-logic.js';
 
 const GROUPS = 'cura:groups', TIPS = 'cura:tips';
@@ -296,7 +296,7 @@ const EXTRACT_PROMPT = `You read a small peer-support group chat for people goin
 - when: when in the day it's done: morning, midday, evening, bedtime, or anytime.
 - kind: "medical" for a medicine, supplement, hormone therapy or other treatment; otherwise "everyday".
 - same_as: the id of an existing tip if it's the same idea, otherwise "".
-- followup_question: only when how_well is unclear, a short, warm question Cura can send the author privately (under 25 words) asking how much it helped, naming what they tried. Otherwise "".`;
+- followup_question: only when how_well is unclear, a short, warm question Cura can send the author privately in their own chat with her (under 25 words) asking how much it helped. Start by saying where it came from ("You mentioned in your Circle that…"), name what they tried, and never use any name: the author label above is only what the group sees. Otherwise "".`;
 
 function newTip(fields, extra) {
   return {
@@ -335,6 +335,7 @@ export async function extractTips(groupId, msg, authorKey, authorName) {
 async function askAuthor(key, { tipId, text }) {
   const user = await loadUser(key);
   if (!user.community.joined) return;
+  text = privateText(text, user);
   user.transcript = [...user.transcript, { from: 'mira', text, at: nowIso(), ui: { kind: 'options', options: TIP_ANSWERS, tipAsk: tipId } }].slice(-300);
   await storeUser(key, user);
 }

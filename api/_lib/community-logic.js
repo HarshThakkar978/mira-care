@@ -22,6 +22,19 @@ export function circleInvite(user, settings) {
   return { from: 'mira', text: 'By the way, people with symptoms like yours are swapping tips in the Cura Circle. Want to take a peek? 💜', at: new Date().toISOString(), cta: { label: 'Peek at the Circle', route: 'community' } };
 }
 
+// Their Circle name (e.g. the nickname "Sage" when they're anonymous) must never appear in their private chat
+// with Cura: it's replaced with their real first name, or dropped if Cura doesn't know it.
+export function privateText(text, user) {
+  const real = (user.profile && user.profile.name) || '';
+  const nick = user.community && user.community.alias;
+  let out = String(text);
+  if (nick && nick !== real) {
+    const esc = nick.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&');
+    out = real ? out.replace(new RegExp(`\\b${esc}\\b`, 'g'), real) : out.replace(new RegExp(`,?\\s*\\b${esc}\\b`, 'g'), '');
+  }
+  return out.replace(/\s+([!?.,])/g, '$1').trim();
+}
+
 export const freshCommunity = () => ({ joined: false, anonymous: false, alias: '', focus: [], groupId: '', joinedAt: '', reason: '', notice: null, hidden: [] });
 
 export function addDays(date, n) {
