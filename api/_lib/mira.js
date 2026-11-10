@@ -65,6 +65,7 @@ They can text "DELETE ALL" to erase everything Cura saved about them.`;
 // app.js: when a feature is added or moved, update this guide and add a question to dev/replay.py "appqs".
 export const APP_GUIDE = `## The Cura app (answer questions about it from this; never guess or deny a feature that's listed here)
 They're using the Cura app at curadaily.com (it can be added to the iPhone or Android Home Screen). It's free. Tabs at the bottom: Chat, Today, Circle, Me.
+- Logging a period: they can just tell you ("my period started"), tap the suggestion above the message box, use + → "My period started", or tap a day in the Cycle calendar.
 - Chat: they text or talk to you. The mic button (where the send button sits when the box is empty) turns speech into text they can check before sending. The + at the top right opens a quick check-in: mood, symptoms with a 1-10 strength, and "my period started". Under your messages the app shows what you saved and, sometimes, a link to a trusted source.
 - Daily reminder: yes, Cura can remind them. Me → Daily reminder: pick a time and allow notifications. It's skipped on days they've already checked in. On iPhone, reminders only work once Cura is added to the Home Screen (Safari → Share → Add to Home Screen, then open Cura from that icon and turn the reminder on there).
 - Today: their week at a glance (darker circles = stronger symptoms, rose = period started), a short insight from you, their plan (ideas they chose to try), next visit and days since their last period. A short recap of their week arrives in the chat on Sundays.
@@ -419,6 +420,18 @@ export function runTool(user, name, input, today) {
 
 const sevText = s => (s.severity ? `${s.severity}/10` : 'no intensity yet');
 
+// When their period is probably due (from their own past starts, or 28 days if there's only one), Cura may ask
+// once whether it has started, but only when it fits what they're saying. Never as a standalone question.
+function periodDueNote(user, today) {
+  const starts = [...new Set(user.cycleStarts.map(c => c.date))].sort();
+  if (!starts.length) return '';
+  const gaps = starts.slice(1).map((d, i) => daysBetween(starts[i], d)).filter(g => g >= 15 && g <= 90);
+  const typical = gaps.length ? Math.round(gaps.reduce((a, b) => a + b, 0) / gaps.length) : 28;
+  const day = daysBetween(starts[starts.length - 1], today);
+  if (day < typical - 3 || day > typical + 21) return '';
+  return `Their period may be due around now (usually about every ${typical} days; it's been ${day}). Only if it fits what they're telling you (cramps, bloating, spotting, mood), you may ask once whether it has started, with quick replies. Don't bring it up otherwise.`;
+}
+
 // How long ago Cura last said their name, so she doesn't use it in every message.
 function nameLastUsed(user) {
   const first = String(user.profile.name || '').trim().split(/\s+/)[0];
@@ -447,6 +460,7 @@ function contextNote(user, today, channel) {
     `Today is ${weekday(today)}, ${today}.`,
     user.profile.name ? `Their name: ${user.profile.name} (${nameLastUsed(user)}).` : 'Their name: not known yet.',
     lastPeriod ? `Last period start: ${lastPeriod.date}.` : 'No period start saved yet.',
+    periodDueNote(user, today),
     user.profile.appointmentDate ? `Next appointment: ${user.profile.appointmentDate}${user.profile.clinician ? ' with ' + user.profile.clinician : ''}.` : '',
     channel === 'app' ? 'The app shows a small "Saved" line under your message listing what you saved, so never confirm saving in words.' : '',
     !user.history.length && channel === 'app' ? 'This is their first message. The app already showed your welcome message introducing you, so skip any introduction.' : '',

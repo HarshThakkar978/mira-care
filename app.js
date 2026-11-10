@@ -33,6 +33,16 @@
   if (linked && ID_RE.test(linked)) { store.set(ID_KEY, linked); store.del(CACHE_KEY); history.replaceState(null, '', location.pathname + location.hash); }
   let deviceId = store.get(ID_KEY);
   if (!deviceId || !ID_RE.test(deviceId)) { deviceId = newId(); store.set(ID_KEY, deviceId); }
+  // Opened from the Home Screen icon for the first time: they already did the welcome in Safari (see api/manifest.js).
+  if (arrived.get('from') === 'home' && linked) {
+    store.set(OB_KEY, '1');
+    if (['light', 'dark', 'system'].includes(arrived.get('theme'))) store.set(THEME_KEY, arrived.get('theme'));
+  }
+  // In a browser tab, point the install details at this person, so "Add to Home Screen" opens as them, not a stranger.
+  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+    const mf = document.querySelector('link[rel="manifest"]');
+    if (mf) mf.href = `/api/manifest?d=${encodeURIComponent(deviceId)}&t=${encodeURIComponent(store.get(THEME_KEY) || '')}`;
+  }
 
   const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, reminder: { enabled: false, hour: 20, devices: 0 }, community: { joined: false, anonymous: false, alias: '', focus: [], groupId: '', reason: '', notice: null, hidden: [] }, plan: [], transcript: [] });
   let user = (() => { try { return { ...emptyUser(), ...JSON.parse(store.get(CACHE_KEY) || '{}') }; } catch { return emptyUser(); } })();
@@ -328,7 +338,8 @@
       ${insightCard()}
       <div class="grid two tiles">
         <a class="card tile-link" href="#visit" data-route="visit"><span class="small muted">Next visit</span><span class="tile-big">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : 'Not set'}</span><span class="tile-go">${appt ? (hasAgenda ? 'Agenda ready ›' : 'Prepare ›') : 'Add a date ›'}</span></a>
-        <a class="card tile-link" href="#cycle" data-route="cycle"><span class="small muted">Cycle</span><span class="tile-big">${since ? `Day ${since}` : '—'}</span><span class="tile-go">Calendar ›</span></a>
+        ${since ? `<a class="card tile-link" href="#cycle" data-route="cycle"><span class="small muted">Cycle</span><span class="tile-big">Day ${since}</span><span class="tile-go">Calendar ›</span></a>`
+          : `<button class="card tile-link" data-action="quick-log" data-period="1"><span class="small muted">Cycle</span><span class="tile-big">—</span><span class="tile-go">Log a period ›</span></button>`}
       </div>
       <p class="note">Cura organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
     </div>`;
@@ -402,7 +413,7 @@
     const gaps = sortedStarts();
     return `<div class="page">
       <button class="back no-print" data-route="today">‹ Today</button>
-      <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add what happened. Anything you tell Cura in chat shows up here too.</p></div>
+      <div class="page-head"><div class="eyebrow">Your cycle</div><h1 class="title">Cycle & symptoms</h1><p class="sub">Tap a day to see or add things.</p></div>
       <div class="card">
         <div class="cal-head"><button class="icon-btn" data-action="month" data-dir="-1" aria-label="Previous month">‹</button><div class="cal-title">${first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' })}</div><button class="icon-btn" data-action="month" data-dir="1" aria-label="Next month">›</button></div>
         <div class="cal">${dows}${days}</div>
@@ -439,7 +450,7 @@
     const body = ui.visitTab === 'before' ? visitBefore() : ui.visitTab === 'agenda' ? visitAgenda() : visitAfter();
     return `<div class="page">
       <button class="back no-print" data-route="today">‹ Today</button>
-      <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Collect what you want to raise, let Cura turn it into an agenda, and keep track of next steps.</p>
+      <div class="page-head"><div class="eyebrow">Appointments</div><h1 class="title">Your visits</h1><p class="sub">Notes, an agenda Cura drafts, and next steps.</p>
         <button class="btn ghost no-print" data-route="report" style="margin-top:12px">📄 Summary for my doctor</button></div>
       <div class="seg no-print" role="tablist">${tabs.map(([k, l]) => `<button role="tab" aria-selected="${ui.visitTab === k}" class="${ui.visitTab === k ? 'on' : ''}" data-visit="${k}">${l}</button>`).join('')}</div>
       ${body}
@@ -454,7 +465,7 @@
         <div class="field"><label for="clinician">Clinician or clinic</label><input class="input" id="clinician" data-profile="clinician" value="${esc(p.clinician)}" placeholder="e.g. Dr. Patel"></div></div>
       </div>
       <div class="card">
-        <h2 class="card-title">Things to bring up</h2><p class="card-sub">Questions, worries, or changes you've noticed. You can also just tell Cura in chat.</p>
+        <h2 class="card-title">Things to bring up</h2><p class="card-sub">Questions or changes to bring up.</p>
         <form data-form="pre-note" class="stack"><textarea class="textarea" name="text" required placeholder="e.g. My sleep has been much worse since August"></textarea><div class="row"><span class="small muted">${plural(notes.length, 'note')}</span><button class="btn primary" type="submit">Add note</button></div></form>
         <div style="margin-top:8px">${notes.map(n => `<div class="list-item"><span aria-hidden="true">📝</span><div class="li-main"><div class="li-note" style="margin-top:0">${esc(n.text)}</div><div class="li-meta">${fmtLong(n.date)}</div></div><button class="icon-btn" data-action="del" data-kind="visit_note" data-id="${esc(n.id)}" aria-label="Delete note">×</button></div>`).join('')}</div>
       </div>
@@ -481,7 +492,7 @@
     const f = user.followup, notes = [...user.postNotes].sort((a, b) => b.date.localeCompare(a.date));
     const empty = !f.summary && !f.steps.length && !f.questions.length;
     return `<div class="card">
-        <h2 class="card-title">After your appointment</h2><p class="card-sub">Write down what you remember while it's fresh: what was said, what to do next.</p>
+        <h2 class="card-title">After your appointment</h2><p class="card-sub">What was said, and what to do next.</p>
         <form data-form="post-note" class="stack"><textarea class="textarea" name="text" required placeholder="e.g. Doctor suggested tracking sleep for 4 weeks and coming back in December"></textarea><div class="row"><span class="small muted">${plural(notes.length, 'note')}</span><button class="btn primary" type="submit">Save note</button></div></form>
         <div style="margin-top:8px">${notes.map(n => `<div class="list-item"><span aria-hidden="true">🗒️</span><div class="li-main"><div class="li-note" style="margin-top:0">${esc(n.text)}</div><div class="li-meta">${fmtLong(n.date)}</div></div><button class="icon-btn" data-action="del" data-kind="after_note" data-id="${esc(n.id)}" aria-label="Delete note">×</button></div>`).join('')}</div>
       </div>
@@ -552,12 +563,12 @@
       const rows = storyRows();
       return `${sheetHead('Your story')}${rows.length
         ? `<dl class="story-list">${rows.map(([l, v]) => `<div><dt>${esc(l)}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>`
-        : '<p class="card-sub">The background behind your symptoms: when it started, your periods, what you\'ve tried. It makes Cura\'s insights more personal and goes on your doctor summary.</p>'}
+        : '<p class="card-sub">Helps Cura tailor her tips and match your Circle.</p>'}
         <button class="btn primary" data-action="story-go" style="width:100%">${rows.length ? 'Tell Cura more' : 'Tell Cura my story'}</button>
         ${ui.preview ? `<div class="test-box"><p class="small"><b>Test copy only.</b> Pick when the "your story" pop-up should appear for you (group now: ${esc((user.story && user.story.arm) || 'not set')}).</p>
           <div class="row"><button class="btn small soft" data-action="story-test" data-arm="early">After 2 messages</button><button class="btn small soft" data-action="story-test" data-arm="later">Next visit</button></div></div>` : ''}`;
     }
-    if (kind === 'erase') return `${sheetHead('Erase everything')}<p class="card-sub">This deletes everything you've told Cura on this account, including your chat and Circle messages. It can't be undone.</p>
+    if (kind === 'erase') return `${sheetHead('Erase everything')}<p class="card-sub">Deletes everything, including your chat and Circle messages. This can't be undone.</p>
       <button class="btn danger" data-action="reset" style="width:100%">${ui.confirmReset ? 'Tap again to erase everything' : 'Erase everything'}</button>`;
     return '';
   }
@@ -580,13 +591,13 @@
       return `<p class="card-sub" style="margin:0">${isIOS() ? 'iPhone only allows reminders for apps on your Home Screen. Add Cura to your Home Screen (above), open it from there, and turn this on.' : "This browser can't show notifications. Try Chrome, Edge or Safari, or add Cura to your Home Screen."}</p>`;
     }
     if (Notification.permission === 'denied') {
-      return `<p class="card-sub" style="margin:0">Notifications are blocked for Cura. Turn them on in your phone's Settings → Notifications → Cura (or in your browser's site settings), then come back here.</p>`;
+      return `<p class="card-sub" style="margin:0">Notifications are off for Cura. Turn them on in Settings → Notifications → Cura.</p>`;
     }
     const hours = Array.from({ length: 18 }, (_, i) => i + 6).map(h => `<option value="${h}" ${h === r.hour ? 'selected' : ''}>${hourLabel(h)}</option>`).join('');
-    return `<p class="card-sub">A gentle nudge once a day to check in with Cura. It's skipped on days you've already logged something.</p>
+    return `<p class="card-sub">A gentle nudge once a day, skipped if you've checked in.</p>
       <div class="form-grid"><div class="field"><label for="remHour">Remind me around</label><select class="select" id="remHour" data-reminder-hour>${hours}</select></div></div>
       <div class="row-wrap" style="margin-top:12px">${r.enabled && ui.pushHere === 'no'
-        ? `<p class="card-sub" style="margin:0 0 8px;width:100%">Your reminder is on, but not on this phone yet (for example, if you added Cura to your Home Screen again).</p><button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on for this phone'}</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
+        ? `<p class="card-sub" style="margin:0 0 8px;width:100%">Your reminder isn't on for this phone yet.</p><button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on for this phone'}</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
         : r.enabled
         ? `<span class="pill">On · around ${hourLabel(r.hour)}</span><button class="btn small ghost" data-action="test-push">Send a test</button><button class="btn small ghost" data-action="reminder-off">Turn off</button>`
         : `<button class="btn primary" data-action="reminder-on" ${ui.reminderBusy ? 'disabled' : ''}>${ui.reminderBusy ? 'Turning on…' : 'Turn on daily reminder'}</button>`}</div>`;
@@ -633,7 +644,7 @@
   function installHelp() {
     if (installPrompt) return `<p class="card-sub">Install Cura so it opens straight into the chat, like an app.</p><button class="btn primary" data-action="install">Install Cura</button>`;
     if (isIOS()) { const g = installSteps(); return `<ol class="install-steps">${g.steps.map(x => `<li><span>${x}</span></li>`).join('')}</ol>`; }
-    return `<p class="card-sub" style="margin:0">Open the browser menu <b>⋮</b> and tap <b>Install app</b> or <b>Add to Home screen</b>. On a computer, look for the install icon in the address bar.</p>`;
+    return `<p class="card-sub" style="margin:0">Browser menu <b>⋮</b> → <b>Install app</b>.</p>`;
   }
   const wantsInstall = () => !isStandalone() && (isIOS() || !!installPrompt) && !store.get(INSTALL_KEY);
   function installSheetHtml() {
@@ -658,17 +669,17 @@
     const n = Math.min(checkinDays(), CIRCLE_DAYS);
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">Circle</div><h1 class="title">Your Circle is almost ready</h1>
-        <p class="sub">A small private group of women going through the same thing. A few check-ins first, so Cura knows who you'll click with.</p></div>
+        <p class="sub">A few check-ins first, so Cura can match you well.</p></div>
       <div class="card lock-card">
-        <div class="lock-steps" aria-label="Joined, and ${n} of ${CIRCLE_DAYS} check-ins"><i class="on joined" title="You joined Cura">✓</i>${Array.from({ length: CIRCLE_DAYS }, (_, i) => `<i class="${i < n ? 'on' : ''}">${i < n ? '✓' : i + 1}</i>`).join('')}</div>
+        <div class="lock-steps" aria-label="${n} of ${CIRCLE_DAYS} check-ins">${Array.from({ length: CIRCLE_DAYS }, (_, i) => `<i class="${i < n ? 'on' : ''}">${i < n ? '✓' : i + 1}</i>`).join('')}</div>
         <p class="lock-text"><b>${n} of ${CIRCLE_DAYS} check-ins.</b> ${CIRCLE_DAYS - n === 1 ? "One more day and you're in." : `${CIRCLE_DAYS - n} more days and you're in.`}</p>
         ${checkedInToday() ? '<p class="small muted" style="margin:0">You checked in today. Come back tomorrow 💜</p>' : '<button class="btn primary" data-action="quick-log" style="width:100%">Check in now</button>'}
         ${ui.storyOn && !(user.story && user.story.startedAt) ? '<button class="cp-story" data-action="story-go">Tell your story for a better match ›</button>' : ''}
       </div>
       <div class="card how-it-works">
-        <div class="hiw"><span>1</span><p><b>Cura finds your people.</b> Matched on the symptoms you live with and how strong they are.</p></div>
-        <div class="hiw"><span>2</span><p><b>Just chat.</b> Share what's helped, or just read along.</p></div>
-        <div class="hiw"><span>3</span><p><b>Try what worked.</b> The best tips become ideas you can add to your plan.</p></div>
+        <div class="hiw"><span>1</span><p><b>Cura finds your people.</b></p></div>
+        <div class="hiw"><span>2</span><p><b>Chat, or just read along.</b></p></div>
+        <div class="hiw"><span>3</span><p><b>Try what's helped others.</b></p></div>
       </div>
     </div>`;
   }
@@ -678,7 +689,7 @@
     return `<div class="forming" role="status">
       <div class="forming-seats" aria-hidden="true">${Array.from({ length: need }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</div>
       <p><b>Your Circle is forming</b> · ${n} of ${need} here</p>
-      <p class="small muted">It opens once ${need} women have joined, so there's always someone to talk to. We'll let you know.</p>
+      <p class="small muted">Opens once ${need} women have joined. We'll let you know.</p>
     </div>`;
   }
   // A soft ring of members around Cura's logo, for the tour step and the "your Circle is ready" moment.
@@ -692,7 +703,7 @@
     const n = Math.min(checkinDays(), CIRCLE_DAYS), left = CIRCLE_DAYS - n;
     const storyTip = ui.storyOn && !(user.story && user.story.startedAt) ? '<button class="cp-story" data-action="story-go">Tell your story for a better match ›</button>' : '';
     return `<div class="card circle-progress"><a class="cp-main" href="#community" data-route="community">
-        <span class="cp-dots" aria-hidden="true"><i class="on"></i>${Array.from({ length: CIRCLE_DAYS }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>
+        <span class="cp-dots" aria-hidden="true">${Array.from({ length: CIRCLE_DAYS }, (_, i) => `<i class="${i < n ? 'on' : ''}"></i>`).join('')}</span>
         <span class="cp-text"><b>Your Circle opens in ${left} check-in${left === 1 ? '' : 's'}</b><small>A small group of women going through the same thing</small></span><span class="arrow">›</span></a>${storyTip}</div>`;
   }
   // Once, the first time they open the app after their Circle opens (no chat message, just this moment).
@@ -704,7 +715,7 @@
   function circleReadyHtml() {
     return `<div class="ob">${circleArt(true)}
       <h2 id="sheetTitle" class="ob-title">You've unlocked your Circle</h2>
-      <p class="ob-text">You can now join a small private group of women going through the same thing, matched by Cura. Say hi or just read along, and choose how you appear.</p></div>
+      <p class="ob-text">Join a small private group of women going through the same thing.</p></div>
       <div class="story-actions"><button class="btn primary" data-action="circle-meet">See my Circle</button><button class="btn ghost" data-action="sheet-close">Later</button></div>`;
   }
   // On Today, once the Circle opens and they haven't joined yet.
@@ -729,7 +740,7 @@
     const J = ui.cm.join || start();
     return `<div class="page">
       <div class="page-head"><div class="eyebrow">Circle</div><h1 class="title">You're not alone in this</h1>
-        <p class="sub">Cura puts you in a small group with people whose symptoms are like yours. Swap what's helped, and Cura turns the best tips into ideas you can try.</p></div>
+        <p class="sub">Swap what's helped with women going through the same thing.</p></div>
       <div class="card"><h2 class="card-title">What would you like to talk about?</h2>
         <p class="card-sub">${defaultFocus().length ? "We picked these from what you've told Cura. Change them if you like." : 'Pick any that fit. Cura uses them to find your group.'}</p>
         <div class="chipset">${focusChoices(J.focus).map(n => `<button class="chip ${J.focus.includes(n) ? 'on' : ''}" data-cm-focus="${esc(n)}" aria-pressed="${J.focus.includes(n)}">${esc(n)}</button>`).join('')}</div></div>
@@ -737,7 +748,7 @@
         <div class="seg" role="radiogroup" aria-label="How you appear">
           <button role="radio" aria-checked="${!J.anonymous}" class="${!J.anonymous ? 'on' : ''}" data-cm-anon="0">By first name</button>
           <button role="radio" aria-checked="${J.anonymous}" class="${J.anonymous ? 'on' : ''}" data-cm-anon="1">Anonymously</button></div>
-        ${J.anonymous ? `<p class="small muted" style="margin:0">You'll show up with a nickname, like Willow or Fern. Nobody sees your name.</p>` : `<label class="sr-only" for="cmName">Your first name</label><input class="input" id="cmName" data-cm-name maxlength="60" placeholder="Your first name" value="${esc(J.name)}" autocomplete="given-name">`}
+        ${J.anonymous ? `<p class="small muted" style="margin:0">You'll appear as a nickname, like Willow.</p>` : `<label class="sr-only" for="cmName">Your first name</label><input class="input" id="cmName" data-cm-name maxlength="60" placeholder="Your first name" value="${esc(J.name)}" autocomplete="given-name">`}
       </div>
       <div class="card how-it-works">
         <div class="hiw"><span>1</span><p><b>Cura finds your people.</b> It matches you with others whose symptoms and intensity are like yours, and keeps adjusting as the community grows.</p></div>
@@ -973,7 +984,7 @@
     if (user.account) return `${sheetHead('Account')}<p class="card-sub">Signed in with Google as <b>${esc(user.account.email)}</b>. Sign in on any phone to see your Cura.</p>
       <button class="btn ghost" data-action="sign-out" style="width:100%">${ui.confirmSignOut ? 'Tap again to sign out of this phone' : 'Sign out'}</button>`;
     return `<div class="ob"><div class="ob-art">🔒</div><h2 id="sheetTitle" class="ob-title">Keep your Cura safe</h2>
-      <p class="ob-text">Sign in with Google so everything you've told Cura is saved to your account. If you change phones or delete the app, just sign in again.</p>
+      <p class="ob-text">Keep your notes if you change phones.</p>
       ${accountBlock()}</div>
       <div class="row" style="margin-top:16px;justify-content:center"><button class="btn ghost" data-action="account-later">Not now</button></div>`;
   }
@@ -1050,7 +1061,7 @@
     const seen = tipsSeen();
     if (all) Object.keys(TIPS).forEach(k => { seen[k] = 1; }); else if (coach) seen[coach.screen] = 1;
     store.set(TIPS_KEY, JSON.stringify(seen));
-    coach = null; drawCoach();
+    coach = null; drawCoach(); refreshTopBar();
     setTimeout(() => { maybeCircleReady(); showStoryPopup(); }, 600); // these wait until tips are out of the way
   }
   document.addEventListener('click', e => {
@@ -1082,9 +1093,9 @@
   }
   function calSheetHtml() {
     return `<div class="sheet-head"><h2 id="sheetTitle" class="card-title">📅 Your plan on your calendar</h2><button class="icon-btn" data-action="sheet-close" aria-label="Close">×</button></div>
-      <p class="card-sub">Cura keeps a private calendar with the ideas in your plan (at the time of day they're for), a one-week check-in, and your next appointment. It updates by itself.</p>
+      <p class="card-sub">Your plan and next visit, in your phone's calendar.</p>
       <div class="cal-btns">${calButtons()}${ui.calUrl ? '<button class="btn ghost" data-action="cal-copy">Copy link</button>' : ''}</div>
-      <p class="small muted" style="margin-top:12px;line-height:1.5">On iPhone, tap <b>Apple Calendar</b>, then <b>Subscribe</b>. Google Calendar can take several hours to show changes. Keep the link to yourself: anyone who has it can see your plan.</p>`;
+      <p class="small muted" style="margin-top:12px;line-height:1.5">On iPhone: <b>Apple Calendar</b> → <b>Subscribe</b>. Keep the link private.</p>`;
   }
 
   // ---------- Bottom sheets: quick log and welcome tour ----------
@@ -1108,8 +1119,8 @@
     const seen = new Set();
     return [...mine, ...COMMON_SYMPTOMS].filter(n => { const k = n.toLowerCase(); if (seen.has(k)) return false; seen.add(k); return true; });
   }
-  function openQuickLog(date) {
-    ui.log = { date: date || today(), mood: '', syms: [], other: '', sev: 5, period: false, saving: false };
+  function openQuickLog(date, period = false) {
+    ui.log = { date: date || today(), mood: '', syms: [], other: '', sev: 5, period, saving: false };
     ui.sheet = 'log'; renderSheet();
   }
   function closeSheet() {
@@ -1175,18 +1186,18 @@
     const body = {
       hello: `<div class="ob-art"><img src="/icons/logo-256.png" alt="" class="ob-icon"></div>
         <h2 id="sheetTitle" class="ob-title">Perimenopause is a lot. Text it to Cura.</h2>
-        <p class="ob-text">Tell Cura how you feel in your own words. She keeps track, spots patterns and gets you ready for your doctor.</p>
+        <p class="ob-text">Tell Cura how you feel. She keeps track and gets you ready for your doctor.</p>
         <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, third night this week. Want a quick tip for tonight?</div><div class="msg-meta"><span class="msg-saved">${CHECK_SVG}Saved: hot flashes 7/10</span></div></div>
-        ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Signing in keeps your notes safe if you change phones. Already use Cura? Sign in to bring everything back.</p>` : ''}`,
+        ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Already use Cura? Sign in to bring everything back.</p>` : ''}`,
       circle: `${circleArt()}
         <h2 id="sheetTitle" class="ob-title">Your Circle</h2>
-        <p class="ob-text">A small private group of women going through the same thing, matched by Cura. Share what's helped, or just read along.</p>
+        <p class="ob-text">A small private group of women going through the same thing.</p>
         <ul class="ob-points"><li><span>🔓</span>Opens after 3 check-ins</li><li><span>🎯</span>Matched on what you're going through</li><li><span>🙈</span>First name or anonymous, your choice</li></ul>`,
       symptoms: `<h2 id="sheetTitle" class="ob-title">What's been hardest lately?</h2>
         <p class="ob-text">Pick up to 3. Cura starts there, and uses them to match your Circle.</p>
         <div class="chipset ob-chips">${COMMON_SYMPTOMS.map(n => `<button class="chip ${ui.obSyms.includes(n) ? 'on' : ''}" data-ob-sym="${esc(n)}" aria-pressed="${ui.obSyms.includes(n)}">${esc(n)}</button>`).join('')}</div>`,
       time: `<h2 id="sheetTitle" class="ob-title">When should Cura check in?</h2>
-        <p class="ob-text">A gentle nudge once a day. It's skipped on days you've already checked in.</p>
+        <p class="ob-text">A gentle nudge once a day, skipped if you've checked in.</p>
         <div class="ob-times">${[[8, '☀️', 'Morning', '8 AM'], [20, '🌙', 'Evening', '8 PM']].map(([h, e, l, t]) => `<button class="ob-time ${ui.obHour === h || (user.reminder && user.reminder.enabled && user.reminder.hour === h) ? 'on' : ''}" data-action="ob-time" data-hour="${h}" ${ui.reminderBusy ? 'disabled' : ''}><span aria-hidden="true">${e}</span><b>${l}</b><small>${t}</small></button>`).join('')}</div>
         ${canRemind ? '' : `<p class="ob-hint">${isIOS() ? 'iPhone only allows reminders once Cura is on your Home Screen. Add it from Safari\'s Share menu, then turn this on in <b>Me</b>.' : 'This browser can\'t show reminders. You can still check in anytime.'}</p>`}
         ${user.profile.name || user.account ? '' : `<label class="ob-name-label" for="obName">What should Cura call you?</label>
@@ -1253,12 +1264,20 @@
       api('community-settings', { focus: picks }, { keepUser: true }).catch(() => {});
     }
   }
+  // iOS 26 Safari can keep the dimmed backdrop's grey in the top bar after a panel closes (a WebKit bug).
+  // Swapping in a fresh theme-color tag and nudging the page makes it re-read the page colour.
+  function refreshTopBar() {
+    const old = $('#themeColor'); if (!old) return;
+    const fresh = old.cloneNode(); old.replaceWith(fresh);
+    requestAnimationFrame(() => { const y = window.scrollY; window.scrollTo(0, y + 1); window.scrollTo(0, y); });
+  }
   function renderSheet() {
     const root = $('#sheet');
     if (!root) return;
     const open = !!ui.sheet;
+    const wasOpenBefore = document.body.classList.contains('sheet-open');
     document.body.classList.toggle('sheet-open', open);
-    if (!open) { root.innerHTML = ''; return; }
+    if (!open) { root.innerHTML = ''; if (wasOpenBefore) refreshTopBar(); return; }
     const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
       <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml, moved: movedSheetHtml, 'circle-ready': circleReadyHtml }[ui.sheet] || meSheetHtml)()}</div>`;
@@ -1459,14 +1478,14 @@
   function storyInviteHtml() {
     return `<div class="ob"><div class="ob-art"><img src="/icons/logo-256.png" alt="" class="ob-icon"></div>
       <h2 id="sheetTitle" class="ob-title">Help Cura get to know you</h2>
-      <p class="ob-text">A few quick questions about your perimenopause so far: when the changes started, your periods, what you've tried. Cura uses it to tailor her tips to you and find you a Circle of women going through the same thing.</p>
+      <p class="ob-text">A few quick questions so Cura can tailor her tips and find your Circle.</p>
       <div class="story-perks"><span>⏱️ About 3 min</span><span>🎙️ Talk or type</span><span>👋 Skip anything</span></div></div>
       <div class="story-actions"><button class="btn primary" data-action="story-go">Let's do it</button><button class="btn ghost" data-action="story-later">Maybe later</button></div>`;
   }
   function movedSheetHtml() {
     return `<div class="ob"><div class="ob-art"><img src="/icons/logo-256.png" alt="" class="ob-icon"></div>
       <h2 id="sheetTitle" class="ob-title">Cura has a new home</h2>
-      <p class="ob-text">Cura now lives at <b>${NEW_HOST}</b>. This app keeps working, but for the newest version, open the new address and add it to your Home Screen again. Everything you've told Cura comes with you.</p></div>
+      <p class="ob-text">Cura now lives at <b>${NEW_HOST}</b>. Open it and add it to your Home Screen again. Your notes come with you.</p></div>
       <div class="story-actions"><a class="btn primary" href="${esc(moveLink())}" target="_blank" rel="noopener">Open ${NEW_HOST}</a><button class="btn ghost" data-action="sheet-close">Not now</button></div>`;
   }
   function storyCard() {
@@ -1562,7 +1581,7 @@
     else if (act === 'voice-stop') stopVoice(false);
     else if (act === 'voice-cancel') stopVoice(true);
     else if (act === 'older') loadOlder();
-    else if (act === 'quick-log') openQuickLog(a.dataset.date);
+    else if (act === 'quick-log') openQuickLog(a.dataset.date, a.dataset.period === '1');
     else if (act === 'sheet-close') closeSheet();
     else if (act === 'log-save') saveQuickLog();
     else if (act === 'ob-next') obGo(1);
@@ -1676,7 +1695,14 @@
     }
     else if (act === 'reset') {
       if (!ui.confirmReset) { ui.confirmReset = true; if (ui.sheet) renderSheet(); else render(); return; }
-      ui.confirmReset = false; ui.cm = freshCm(); ui.calUrl = ''; ui.sheet = null; guarded(() => api('reset'), 'Everything erased');
+      ui.confirmReset = false; ui.cm = freshCm(); ui.calUrl = ''; ui.sheet = null;
+      guarded(async () => {
+        await api('reset');
+        // A true fresh start on this phone too: no old messages kept on screen, no saved copy, the welcome tour again.
+        ui.older = []; ui.seen = null; ui.live = ''; ui.failed = ''; ui.multi = []; ui.obName = ''; ui.obSyms = null;
+        for (const k of [CACHE_KEY, OB_KEY, ACCT_KEY, TIPS_KEY, 'cura-circle-ready-seen', 'cura-circle-visited', 'mira-moved-note']) store.del(k);
+        go('chat'); ui.ob = 0; ui.sheet = 'welcome'; renderSheet();
+      }, 'Everything erased');
     }
   });
 

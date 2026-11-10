@@ -164,7 +164,7 @@ async function announceOpen(group, joinerKey) {
   const others = group.members.filter(m => m.key !== joinerKey);
   for (const [k, u] of await usersByKey(others.map(m => m.key))) {
     if (!u.reminder.subscriptions.length) continue;
-    await sendToUser(u, { title: 'Your Circle is open', body: 'Everyone is here. Come say hi, or just read along.', url: '/#community', tag: 'cura-circle' });
+    await sendToUser(u, { title: 'Your Circle is open', body: "Everyone's here. Come say hi, or just read along.", url: '/#community', tag: 'cura-circle' });
     await storeUser(k, u);
   }
 }

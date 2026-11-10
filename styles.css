@@ -27,6 +27,7 @@
 }}
 *{box-sizing:border-box}
 html,body{height:100%}
+html{background:var(--bg)} /* iPhone's top bar takes its colour from here */
 body{margin:0;background:var(--bg);overscroll-behavior-y:none}
 button,input,textarea,select{font:inherit;color:inherit}
 button{cursor:pointer;-webkit-tap-highlight-color:transparent}
@@ -639,3 +640,4 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 .forming-seats{display:flex;justify-content:center;gap:8px;margin-bottom:6px}
 .forming-seats i{width:14px;height:14px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--brand) 45%,var(--line))}
 .forming-seats i.on{border:0;background:var(--brand)}
+button.tile-link{border:0;text-align:left;font:inherit;cursor:pointer;width:100%}
