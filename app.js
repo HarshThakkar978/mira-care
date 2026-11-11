@@ -1416,6 +1416,21 @@
     if (!matchMedia('(pointer: coarse)').matches) box.focus(); // on a phone that would shift the layout without opening the keyboard
     return true;
   }
+  // Checks the recording itself before sending it: transcription services invent words from silence, so a clip
+  // with under ~0.3s of voice-level sound isn't sent. If the phone can't decode it, it's sent as before.
+  async function hasSpeech(blob) {
+    try {
+      const OAC = window.OfflineAudioContext || window.webkitOfflineAudioContext; if (!OAC) return true;
+      const buf = await new OAC(1, 16000, 16000).decodeAudioData(await blob.arrayBuffer());
+      const data = buf.getChannelData(0), win = Math.round(buf.sampleRate * 0.02);
+      let loud = 0;
+      for (let i = 0; i + win <= data.length; i += win) {
+        let sum = 0; for (let j = i; j < i + win; j++) sum += data[j] * data[j];
+        if (Math.sqrt(sum / win) > 0.02) loud++;
+      }
+      return loud >= 15;
+    } catch { return true; }
+  }
   const toB64 = blob => new Promise((ok, fail) => { const f = new FileReader(); f.onload = () => ok(String(f.result).split(',')[1] || ''); f.onerror = fail; f.readAsDataURL(blob); });
   async function startVoice(forId) {
     if (rec) return;
@@ -1465,10 +1480,10 @@
     if (r.stream) r.stream.getTracks().forEach(t => t.stop());
     // Nobody spoke (the level meter was running and heard under ~0.3s of sound): don't send silence to be transcribed,
     // which can come back as made-up words.
-    if (blob.size < 2000 || (r.heard && (r.voiced || 0) < 4)) { endVoice(); toast("I didn't hear anything. Try again?"); return; }
+    if (blob.size < 2000 || (r.heard && (r.voiced || 0) < 4) || !(await hasSpeech(blob))) { endVoice(); toast("I didn't hear anything. Try again?"); return; }
     drawRec('busy');
     try {
-      const d = await api('transcribe', { audio: await toB64(blob), type: blob.type, lang: (navigator.language || 'en').slice(0, 2) }, { keepUser: true });
+      const d = await api('transcribe', { audio: await toB64(blob), type: blob.type }, { keepUser: true });
       endVoice();
       if (!putText(r.box, d.text)) toast("I didn't catch that. Try again?");
     } catch (e) { endVoice(); toast(e.message); }

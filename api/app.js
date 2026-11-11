@@ -88,7 +88,7 @@ export async function POST(request) {
     if (action === 'transcribe') {
       if (!voiceConfigured()) return json({ error: 'Voice is not set up yet' }, 503);
       if (!(await allowPost(`${key}:voice`, 60))) return json({ error: "That's a lot of voice notes for one hour. Try typing for a bit." }, 429);
-      try { return json({ text: await transcribe(body.audio, body.type, String(body.lang || '').slice(0, 2).toLowerCase()) }); }
+      try { return json({ text: await transcribe(body.audio, body.type) }); }
       catch (e) { return json({ error: e.status ? e.message : "Couldn't turn that into text. Please try again." }, e.status || 500); }
     }
     if (action === 'story-offer') {
