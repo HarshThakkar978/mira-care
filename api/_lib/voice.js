@@ -4,23 +4,12 @@
 const MODEL = () => process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 export const voiceConfigured = () => !!process.env.OPENAI_API_KEY;
 
-// Words people say to Cura, so the transcript spells them right.
-// Only spellings, not sentences: on silence the model can echo its prompt, so the prompt must be nothing a person would say.
-const PROMPT = 'Hot flashes, night sweats, brain fog, HRT, progesterone, estrogen, perimenopause.';
-const PROMPT_SEQ = PROMPT.toLowerCase().match(/[a-z]+/g);
-// Nothing was really said: an empty result, or the model echoing its prompt (9+ of its 10 words in the same order,
-// which nobody says in real speech). Ordinary sentences that mention these symptoms are kept.
+// No spelling hint: on silence the model echoes (or even translates) any hint it's given. It spells these words fine.
+// What it invents from silence is a short stock phrase; those are thrown away when they're the whole transcript.
+const SILENCE_PHRASES = /^(sure|okay|ok|you|thank you|thanks|thank you for watching|thanks for watching|bye|bye bye|yes|no|hmm|um|uh|so|oh|ah|music|silence|\.+)[.!?]*$/i;
 export function looksMadeUp(text) {
-  const words = String(text).toLowerCase().match(/[a-z]+/g) || [];
-  if (!words.length) return true;
-  for (let i = 0; i < words.length; i++) {
-    const j = PROMPT_SEQ.indexOf(words[i]);
-    if (j < 0) continue;
-    let n = 0;
-    while (words[i + n] && words[i + n] === PROMPT_SEQ[j + n]) n++;
-    if (n >= 9) return true;
-  }
-  return false;
+  const t = String(text).replace(/[\s"“”]+/g, ' ').trim();
+  return !t || SILENCE_PHRASES.test(t) || !/[a-z]/i.test(t);
 }
 
 const EXT = { 'audio/mp4': 'mp4', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
@@ -37,7 +26,6 @@ export async function transcribe(audio, type) {
   const form = new FormData();
   form.append('file', new Blob([bytes], { type: mime }), `voice.${ext}`);
   form.append('model', MODEL());
-  form.append('prompt', PROMPT);
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form });
   if (!res.ok) {
     console.error('transcription failed', res.status, (await res.text().catch(() => '')).slice(0, 300));
