@@ -5,9 +5,23 @@ const MODEL = () => process.env.OPENAI_TRANSCRIBE_MODEL || 'gpt-4o-transcribe';
 export const voiceConfigured = () => !!process.env.OPENAI_API_KEY;
 
 // Words people say to Cura, so the transcript spells them right.
-const PROMPT = 'A woman talking casually about her perimenopause, periods and symptoms, e.g. hot flashes, night sweats, brain fog, HRT, progesterone, estrogen, spotting, cramps, insomnia, anxiety, joint pain. Write it with normal punctuation and leave out filler words like um and uh.';
-const EXT = { 'audio/mp4': 'mp4', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
-export const MAX_AUDIO_BYTES = 3 * 1024 * 1024; // about 3 minutes of phone audio; Vercel caps the request at 4.5 MB
+// Only spellings, not sentences: on silence the model can echo its prompt, so the prompt must be nothing a person would say.
+const PROMPT = 'Hot flashes, night sweats, brain fog, HRT, progesterone, estrogen, perimenopause.';
+const PROMPT_SEQ = PROMPT.toLowerCase().match(/[a-z]+/g);
+// Nothing was really said: an empty result, or the model echoing its prompt (9+ of its 10 words in the same order,
+// which nobody says in real speech). Ordinary sentences that mention these symptoms are kept.
+export function looksMadeUp(text) {
+  const words = String(text).toLowerCase().match(/[a-z]+/g) || [];
+  if (!words.length) return true;
+  for (let i = 0; i < words.length; i++) {
+    const j = PROMPT_SEQ.indexOf(words[i]);
+    if (j < 0) continue;
+    let n = 0;
+    while (words[i + n] && words[i + n] === PROMPT_SEQ[j + n]) n++;
+    if (n >= 9) return true;
+  }
+  return false;
+}
 
 // audio: the recording as base64; type: its MIME type from the browser (e.g. "audio/mp4" on iPhone).
 export async function transcribe(audio, type) {
@@ -27,5 +41,6 @@ export async function transcribe(audio, type) {
     throw Object.assign(new Error("Couldn't turn that into text. Please try again."), { status: 502 });
   }
   const data = await res.json();
-  return String(data.text || '').trim().slice(0, 4000);
+  const text = String(data.text || '').trim().slice(0, 4000);
+  return looksMadeUp(text) ? '' : text;
 }

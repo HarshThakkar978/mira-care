@@ -20,6 +20,16 @@
     return `https://${NEW_HOST}${location.pathname}?${q}${location.hash}`;
   };
   if (onOldHost && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) { location.replace(moveLink()); return; }
+  const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  // First open of a Home Screen app added from Safari: trade the one-time code in the address for this person's
+  // device code (see the "handoff" actions in api/app.js), so they don't start over as a stranger.
+  const handoff = new URLSearchParams(location.search).get('h');
+  if (handoff && standalone && !store.get(ID_KEY)) {
+    fetch('/api/app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: 'handoff-' + Date.now().toString(36) + 'xxxxxxxx', action: 'handoff-claim', token: handoff }) })
+      .then(r => r.json()).then(d => location.replace(d.device ? `/?device=${encodeURIComponent(d.device)}&from=home#chat` : '/#chat'))
+      .catch(() => location.replace('/#chat'));
+    return;
+  }
   const arrived = new URLSearchParams(location.search);
   if (arrived.get('moved')) {
     for (const [param, key] of [['theme', THEME_KEY], ['ob', OB_KEY], ['acct', ACCT_KEY]]) if (arrived.get(param)) store.set(key, arrived.get(param));
@@ -38,10 +48,15 @@
     store.set(OB_KEY, '1');
     if (['light', 'dark', 'system'].includes(arrived.get('theme'))) store.set(THEME_KEY, arrived.get('theme'));
   }
-  // In a browser tab, point the install details at this person, so "Add to Home Screen" opens as them, not a stranger.
-  if (!(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+  // In a browser tab, get ready for "Add to Home Screen": iPhone opens the new app at the page's address, so it
+  // carries a one-time code (h=…) that only a Home Screen app can trade for this person. Also point the install
+  // details at them, for phones that read those instead.
+  if (!standalone) {
     const mf = document.querySelector('link[rel="manifest"]');
     if (mf) mf.href = `/api/manifest?d=${encodeURIComponent(deviceId)}&t=${encodeURIComponent(store.get(THEME_KEY) || '')}`;
+    fetch('/api/app', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: deviceId, action: 'handoff-create' }) })
+      .then(r => r.json()).then(d => { if (d.token && !location.search.includes('device=')) history.replaceState(null, '', `/?h=${d.token}${location.hash}`); })
+      .catch(() => {});
   }
 
   const emptyUser = () => ({ profile: { name: '', appointmentDate: '', clinician: '' }, cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [], agenda: { summary: '', topics: [], questions: [] }, followup: { summary: '', steps: [], questions: [] }, reminder: { enabled: false, hour: 20, devices: 0 }, community: { joined: false, anonymous: false, alias: '', focus: [], groupId: '', reason: '', notice: null, hidden: [] }, plan: [], transcript: [] });
@@ -146,8 +161,8 @@
     const picks = (user.community && user.community.focus || []).map(x => x.toLowerCase()).slice(0, 3);
     const list = picks.length <= 1 ? picks.join('') : `${picks.slice(0, -1).join(', ')} and ${picks[picks.length - 1]}`;
     return picks.length
-      ? `Hi${name}, I'm Cura 💜 ${list[0].toUpperCase() + list.slice(1)} can be so draining. How have things been lately?`
-      : `Hi${name}, I'm Cura 💜 Text me whenever you like: how you feel, a symptom, or when your period starts. I'll keep track and help you get ready for appointments.`;
+      ? `Hi${name}, I'm Cura 💜 ${list[0].toUpperCase() + list.slice(1)} can be so draining. Tell me how things have been, and I'll suggest what might help.`
+      : `Hi${name}, I'm Cura 💜 Tell me how you feel, a symptom, or when your period starts. I'll keep track, suggest what might help, and get you ready for your doctor.`;
   }
   const checkedInToday = () => user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
   // Once a day, until they check in, Cura's question and the five faces sit at the end of the chat.
@@ -1154,9 +1169,13 @@
       ${picked ? `<div class="sev-box"><div class="row"><b>${esc(label)}</b><b class="sev-val"><output id="logSevOut">${L.sev}</output> / 10</b></div>
         <div class="sev-bar" role="group" aria-label="How strong, 1 to 10">${Array.from({ length: 10 }, (_, i) => `<button class="${i < L.sev ? 'on' : ''}" data-log-sevbtn="${i + 1}" aria-label="${i + 1} out of 10" aria-pressed="${i + 1 === L.sev}"></button>`).join('')}</div>
         <div class="sev-row"><span>Mild</span><span>Strong</span></div></div>` : ''}
-      <label class="toggle"><span>My period started ${L.date === today() ? 'today' : 'this day'}</span><input type="checkbox" data-log-period ${L.period ? 'checked' : ''}></label>
-      <div class="row ci-foot"><div class="seg small-seg" role="tablist">${[[today(), 'Today'], [yesterday, 'Yesterday']].map(([d, l]) => `<button role="tab" aria-selected="${L.date === d}" class="${L.date === d ? 'on' : ''}" data-log-date="${d}">${l}</button>`).join('')}</div>
-      <button class="btn primary" data-action="log-save" ${L.saving ? 'disabled' : ''}>${L.saving ? 'Saving…' : 'Save check-in'}</button></div>`;
+      <label class="toggle"><span>My period started ${L.date === today() ? 'today' : 'on this day'}</span><input type="checkbox" data-log-period ${L.period ? 'checked' : ''}></label>
+      <div class="row ci-foot"><div class="seg small-seg" role="tablist">${[[today(), 'Today'], [yesterday, 'Yesterday']].map(([d, l]) => `<button role="tab" aria-selected="${L.date === d}" class="${L.date === d ? 'on' : ''}" data-log-date="${d}">${l}</button>`).join('')}${(() => {
+        // Any earlier day: the phone's own date picker sits invisibly over this button.
+        const other = L.date !== today() && L.date !== yesterday;
+        return `<label class="seg-date ${other ? 'on' : ''}" role="tab" aria-selected="${other}"><span>${other ? esc(new Date(L.date + 'T12:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' })) : 'Other day'}</span><input type="date" data-log-pick aria-label="Pick another day" max="${today()}" min="${addDays(today(), -730)}" value="${L.date}"></label>`;
+      })()}</div>
+      <button class="btn primary" data-action="log-save" ${L.saving ? 'disabled' : ''}>${L.saving ? 'Saving…' : 'Save'}</button></div>`;
   }
   async function saveQuickLog() {
     const L = ui.log;
@@ -1186,7 +1205,7 @@
     const body = {
       hello: `<div class="ob-art"><img src="/icons/logo-256.png" alt="" class="ob-icon"></div>
         <h2 id="sheetTitle" class="ob-title">Perimenopause is a lot. Text it to Cura.</h2>
-        <p class="ob-text">Tell Cura how you feel. She keeps track and gets you ready for your doctor.</p>
+        <div class="ob-values"><span>📝 Track by just texting</span><span>💡 Tips that fit you</span><span>🩺 Ready for your doctor</span></div>
         <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, third night this week. Want a quick tip for tonight?</div><div class="msg-meta"><span class="msg-saved">${CHECK_SVG}Saved: hot flashes 7/10</span></div></div>
         ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Already use Cura? Sign in to bring everything back.</p>` : ''}`,
       circle: `${circleArt()}
@@ -1372,7 +1391,9 @@
       last = t;
       r.analyser.getByteTimeDomainData(data);
       let sum = 0; for (const v of data) sum += (v - 128) * (v - 128);
-      levels.shift(); levels.push(Math.max(0.12, Math.min(1, Math.sqrt(sum / data.length) / 28)));
+      const level = Math.sqrt(sum / data.length);
+      if (r.ac && r.ac.state === 'running') { r.heard = true; if (level > 6) r.voiced = (r.voiced || 0) + 1; } // about 70ms of real sound each
+      levels.shift(); levels.push(Math.max(0.12, Math.min(1, level / 28)));
       const bars = r.form.querySelectorAll('.rec-wave i');
       bars.forEach((b, i) => { b.style.height = `${Math.round(levels[i] * 100)}%`; });
     };
@@ -1442,7 +1463,9 @@
     if (r.mode === 'browser') { endVoice(); if (!putText(r.box, r.text || r.live)) toast("I didn't catch that. Try again?"); return; }
     const blob = new Blob(r.chunks, { type: (r.recorder.mimeType || 'audio/mp4').split(';')[0] });
     if (r.stream) r.stream.getTracks().forEach(t => t.stop());
-    if (blob.size < 2000) { endVoice(); toast("I didn't catch that. Try again?"); return; }
+    // Nobody spoke (the level meter was running and heard under ~0.3s of sound): don't send silence to be transcribed,
+    // which can come back as made-up words.
+    if (blob.size < 2000 || (r.heard && (r.voiced || 0) < 4)) { endVoice(); toast("I didn't hear anything. Try again?"); return; }
     drawRec('busy');
     try {
       const d = await api('transcribe', { audio: await toB64(blob), type: blob.type }, { keepUser: true });
@@ -1751,6 +1774,11 @@
     if (e.target.id === 'groupInput' && e.key === 'Enter' && !e.shiftKey && !e.isComposing && matchMedia('(hover: hover)').matches) { e.preventDefault(); $('#groupComposer').requestSubmit(); }
   });
   document.addEventListener('change', e => {
+    if (e.target.matches && e.target.matches('[data-log-pick]') && ui.log) {
+      const v = e.target.value;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(v) && v <= today()) { ui.log.date = v; renderSheet(); } else if (v > today()) toast("You can only log days that have happened");
+      return;
+    }
     const el = e.target;
     if (el.matches('[data-log-period]') && ui.log) { ui.log.period = el.checked; return; }
     if (el.dataset.profile) guarded(() => tool('save_profile', { [el.dataset.profile]: el.value }), 'Saved');

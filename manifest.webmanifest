@@ -3,7 +3,6 @@
   "short_name": "Cura",
   "description": "Text Cura how you feel. She keeps track of your cycle and symptoms and helps you prepare for appointments.",
   "id": "/",
-  "start_url": "/?source=homescreen#chat",
   "scope": "/",
   "display": "standalone",
   "background_color": "#F7F4FB",

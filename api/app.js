@@ -4,7 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { waitUntil } from '@vercel/functions';
 import { runTool, freshUser, normalizeUser, mergeUsers } from './_lib/mira.js';
 import { miraReply, loadUser, storeUser, today, MODEL } from './_lib/respond.js';
-import { storeConfigured, addReminderUser, removeReminderUser, getAccount, setAccount } from './_lib/store.js';
+import { storeConfigured, addReminderUser, removeReminderUser, getAccount, setAccount, rcmd } from './_lib/store.js';
 import { verifyGoogleToken } from './_lib/google.js';
 import { vapidKeys, localNow, sendToUser } from './_lib/push.js';
 import {
@@ -48,6 +48,18 @@ export async function POST(request) {
   const key = `web-${id}`;
 
   try {
+    // "Add to Home Screen" on iPhone: the new Home Screen app has its own storage, so Safari hands over a one-time
+    // code in the page address. The Home Screen app trades it for this person's device code on its first open.
+    if (action === 'handoff-create') {
+      const token = crypto.randomUUID().replace(/-/g, '');
+      await rcmd(['SET', `cura:handoff:${token}`, id, 'EX', 86400]);
+      return json({ token });
+    }
+    if (action === 'handoff-claim') {
+      const token = String(body.token || '').replace(/[^a-f0-9]/g, '').slice(0, 64);
+      const device = token ? await rcmd(['GETDEL', `cura:handoff:${token}`]) : null;
+      return json({ device: device && ID_RE.test(device) ? device : null });
+    }
     if (action === 'load') {
       const user = await loadUser(key);
       const settings = await loadSettings().catch(() => ({}));
