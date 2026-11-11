@@ -1468,7 +1468,7 @@
     if (blob.size < 2000 || (r.heard && (r.voiced || 0) < 4)) { endVoice(); toast("I didn't hear anything. Try again?"); return; }
     drawRec('busy');
     try {
-      const d = await api('transcribe', { audio: await toB64(blob), type: blob.type }, { keepUser: true });
+      const d = await api('transcribe', { audio: await toB64(blob), type: blob.type, lang: (navigator.language || 'en').slice(0, 2) }, { keepUser: true });
       endVoice();
       if (!putText(r.box, d.text)) toast("I didn't catch that. Try again?");
     } catch (e) { endVoice(); toast(e.message); }

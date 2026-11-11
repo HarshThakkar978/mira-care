@@ -16,7 +16,8 @@ const EXT = { 'audio/mp4': 'mp4', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'aud
 export const MAX_AUDIO_BYTES = 3 * 1024 * 1024; // about 3 minutes of phone audio; Vercel caps the request at 4.5 MB
 
 // audio: the recording as base64; type: its MIME type from the browser (e.g. "audio/mp4" on iPhone).
-export async function transcribe(audio, type) {
+// lang: the phone's language (e.g. "en"); told to the model so noise isn't heard as a random foreign word.
+export async function transcribe(audio, type, lang = '') {
   const mime = String(type || '').split(';')[0].trim().toLowerCase();
   const ext = EXT[mime];
   if (!ext) throw Object.assign(new Error('Unsupported audio format'), { status: 400 });
@@ -26,6 +27,7 @@ export async function transcribe(audio, type) {
   const form = new FormData();
   form.append('file', new Blob([bytes], { type: mime }), `voice.${ext}`);
   form.append('model', MODEL());
+  if (/^[a-z]{2}$/.test(lang)) form.append('language', lang);
   const res = await fetch('https://api.openai.com/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` }, body: form });
   if (!res.ok) {
     console.error('transcription failed', res.status, (await res.text().catch(() => '')).slice(0, 300));
