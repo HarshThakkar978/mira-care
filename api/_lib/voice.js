@@ -23,6 +23,9 @@ export function looksMadeUp(text) {
   return false;
 }
 
+const EXT = { 'audio/mp4': 'mp4', 'audio/x-m4a': 'm4a', 'audio/m4a': 'm4a', 'audio/aac': 'm4a', 'audio/webm': 'webm', 'audio/ogg': 'ogg', 'audio/mpeg': 'mp3', 'audio/wav': 'wav' };
+export const MAX_AUDIO_BYTES = 3 * 1024 * 1024; // about 3 minutes of phone audio; Vercel caps the request at 4.5 MB
+
 // audio: the recording as base64; type: its MIME type from the browser (e.g. "audio/mp4" on iPhone).
 export async function transcribe(audio, type) {
   const mime = String(type || '').split(';')[0].trim().toLowerCase();
