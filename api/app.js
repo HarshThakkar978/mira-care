@@ -14,6 +14,7 @@ import {
 import { ideasFor, addToPlan, recordOutcome, HOW_WELL, circleAccess } from './_lib/community-logic.js';
 import { storyOffer, storyStart, storySeen, storyLater, storyReminder } from './_lib/story.js';
 import { transcribe, voiceConfigured } from './_lib/voice.js';
+import { weeklyTip } from './_lib/weektip.js';
 
 const ID_RE = /^[A-Za-z0-9-]{16,64}$/;
 // Tools the app may run directly (same ones Cura uses), so manual entries and chat entries stay in one place.
@@ -83,6 +84,17 @@ export async function POST(request) {
     }
 
     if (action === 'insight') return json({ insight: await weeklyInsight(key, user) });
+    if (action === 'week-tip') {
+      try { return json({ tip: await weeklyTip(user, today(), MODEL(), u => storeUser(key, u)) }); }
+      catch (e) { console.error('week tip', e); return json({ tip: null }); }
+    }
+    if (action === 'pin') {
+      // Up to 2 things pinned on Today: "mood" or symptom names.
+      const list = (Array.isArray(body.pinned) ? body.pinned : []).map(x => String(x || '').trim().toLowerCase().slice(0, 60)).filter(Boolean);
+      user.profile.pinned = [...new Set(list)].slice(0, 2);
+      await storeUser(key, user);
+      return json({ user: view(user) });
+    }
 
     // ---------- Voice and "your story" ----------
     if (action === 'transcribe') {

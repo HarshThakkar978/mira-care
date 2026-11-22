@@ -39,9 +39,13 @@ def seed(u):
     d = lambda n: (t - datetime.timedelta(days=n)).isoformat()
     u["profile"].update(name="Priya", appointmentDate=(t + datetime.timedelta(days=6)).isoformat(), clinician="Dr. Patel")
     u["cycleStarts"] = [{"id": nid(), "date": d(70)}, {"id": nid(), "date": d(36)}, {"id": nid(), "date": d(4)}]
-    names = [("hot flashes", 6), ("night sweats", 7), ("brain fog", 4), ("hot flashes", 5), ("joint pain", 3), ("hot flashes", 8), ("trouble sleeping", 6)]
-    u["symptoms"] = [{"id": nid(), "date": d(i * 2 + 1), "name": n, "severity": s, "impact": "woke up twice" if i % 2 else "", "notes": ""} for i, (n, s) in enumerate(names)]
-    u["checkins"] = [{"id": nid(), "date": d(1), "feeling": "tired but okay"}]
+    # Two weeks with patterns for the Today dashboard: hot flashes easing, sleep often on the same days.
+    names = [(1, "hot flashes", 5), (2, "hot flashes", 6), (4, "hot flashes", 5), (6, "hot flashes", 6),
+             (8, "hot flashes", 7), (9, "hot flashes", 8), (10, "hot flashes", 7), (11, "hot flashes", 8), (13, "hot flashes", 7),
+             (1, "trouble sleeping", 5), (2, "trouble sleeping", 6), (4, "trouble sleeping", 5), (9, "trouble sleeping", 7), (10, "trouble sleeping", 7), (11, "trouble sleeping", 6),
+             (3, "brain fog", 4), (12, "brain fog", 5), (20, "joint pain", 3), (24, "night sweats", 7)]
+    u["symptoms"] = [{"id": nid(), "date": d(n), "name": nm, "severity": sv, "impact": "woke up twice" if n % 2 else "", "notes": ""} for n, nm, sv in names]
+    u["checkins"] = [{"id": nid(), "date": d(n), "feeling": f} for n, f in [(1, "tired but okay"), (3, "good"), (5, "Great"), (10, "rough"), (12, "good")]]
     u["preNotes"] = [{"id": nid(), "date": d(2), "text": "Sleep has been much worse since August"}]
     base = now() - datetime.timedelta(days=3)
     # 120 older messages so "Load earlier messages" can be tested
@@ -131,6 +135,12 @@ def handle(body):
     if a == "story-start":
         st = u.setdefault("story", {}); st["startedAt"] = now().isoformat(); st.setdefault("fields", {})
         u["transcript"].append({"from": "mira", "at": now().isoformat(), "kind": "story", "text": "Thank you 💜 Just a few short questions, one at a time. Skip any you like, or tap the mic to talk.\n\nFirst: when did you first notice changes you think might be perimenopause, like hot flashes, poorer sleep, mood changes or different periods?", "ui": {"kind": "options", "options": ["In the last 6 months", "6–12 months ago", "1–2 years ago", "Over 2 years ago", "Not sure"]}})
+        return {"user": view(u)}
+    if a == "week-tip":
+        if not u["symptoms"] and len(u["checkins"]) < 3: return {"tip": None}
+        return {"tip": {"title": "For your broken nights", "text": "Your poor sleep keeps landing on hot-flash days, so a cool, dark bedroom and the same wake-up time each day are the NHS's first steps.", "source": {"site": "NHS", "title": "Insomnia", "url": "https://www.nhs.uk/conditions/insomnia/"}}}
+    if a == "pin":
+        u["profile"]["pinned"] = [str(x).strip().lower()[:60] for x in body.get("pinned", []) if str(x).strip()][:2]
         return {"user": view(u)}
     if a == "insight":
         return {"insight": "Hot flashes showed up on 3 nights this week, mostly around 6–8, and they often came with broken sleep."}

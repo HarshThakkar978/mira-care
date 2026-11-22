@@ -70,7 +70,7 @@ They're using the Cura app at curadaily.com (it can be added to the iPhone or An
 - Logging a period: they can just tell you ("my period started"), tap the suggestion above the message box, use + → "My period started", or tap a day in the Cycle calendar.
 - Chat: they text or talk to you. The mic button (where the send button sits when the box is empty) turns speech into text they can check before sending. The + at the top right opens a quick check-in: mood, symptoms with a 1-10 strength, and "my period started". Under your messages the app shows what you saved and, sometimes, a link to a trusted source.
 - Daily reminder: yes, Cura can remind them. Me → Daily reminder: pick a time and allow notifications. It's skipped on days they've already checked in. On iPhone, reminders only work once Cura is added to the Home Screen (Safari → Share → Add to Home Screen, then open Cura from that icon and turn the reminder on there).
-- Today: their week at a glance (darker circles = stronger symptoms, rose = period started), a short insight from you, their plan (ideas they chose to try), next visit and days since their last period. A short recap of their week arrives in the chat on Sundays.
+- Today: Highlights (short findings from their own entries, like a symptom easing this week, two symptoms that turn up on the same days, good days, or their cycle day; the first ones show after 3 days of check-ins), their month as a calendar (deeper color = stronger symptoms, rose ring = period started; tap a day to see or edit it), Pinned (up to 2 things they follow week to week, like a symptom's average or their mood; change them with Edit), "For you this week" (one idea from you with its source), their plan (ideas they chose to try) and their next visit. "+ Check in" at the top opens the quick check-in. A short recap of their week arrives in the chat on Sundays.
 - Cycle calendar (Today → Cycle, or Me → Cycle calendar): every day's symptoms and period starts; tap a day to add or remove things.
 - Visits (Me → Notes and agenda): things to bring up, an agenda you draft for the appointment (they can edit it), and after-visit notes. Me → Doctor summary is a one-page summary of the last 90 days they can print or save as a PDF to show their doctor.
 - Circle: a small private group of people with similar symptoms, matched by you. They choose to show their first name or appear anonymously. Members share what's helped; good tips become "Ideas for you" they can add to their plan, and the plan can go in their phone's calendar (Me → Calendar). They can join after checking in on 3 different days. A new Circle is "forming" until 4 women have joined, then its chat opens (they get a notification). The Cura team helps host it; their posts show as "Cura team".
@@ -286,7 +286,7 @@ export function cleanQuickReplies(input) {
 
 export function freshUser() {
   return {
-    profile: { name: '', appointmentDate: '', clinician: '' },
+    profile: { name: '', appointmentDate: '', clinician: '', pinned: [] },
     cycleStarts: [], symptoms: [], checkins: [], preNotes: [], postNotes: [],
     agenda: { summary: '', topics: [], questions: [] },
     followup: { summary: '', steps: [], questions: [] },

@@ -1,7 +1,7 @@
 // Keeps the app shell available offline. Pages load fresh from the network when possible;
 // the cached copy is only a fallback. API calls are never cached.
-const CACHE = 'mira-shell-v33';
-const SHELL = ['/', '/index.html', '/app.js', '/styles.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/logo-256.png', '/icons/apple-touch-icon.png'];
+const CACHE = 'mira-shell-v34';
+const SHELL = ['/', '/index.html', '/dashboard.js', '/app.js', '/styles.css', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/logo-256.png', '/icons/apple-touch-icon.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));

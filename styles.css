@@ -243,8 +243,6 @@ input[type=range]{width:100%;accent-color:var(--brand)}
 
 /* ---------- Today extras ---------- */
 .quick-row{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:-4px 0 14px}
-.insight{margin-bottom:14px;border-color:color-mix(in srgb,var(--brand) 25%,var(--line));background:linear-gradient(160deg,var(--brand-soft),var(--surface) 70%)}
-.insight-text{margin:6px 0 0;font-size:15.5px;line-height:1.5}
 .skel{height:13px;border-radius:7px;margin-top:10px;background:linear-gradient(90deg,var(--surface-2) 25%,color-mix(in srgb,var(--surface-2) 40%,var(--surface)) 50%,var(--surface-2) 75%);background-size:200% 100%;animation:shimmer 1.3s linear infinite}
 
 /* ---------- Bottom sheet ---------- */
@@ -423,24 +421,7 @@ body.kb-open .chat-head .head-plus{display:none}
 .mood-btn:active{transform:scale(.94)}
 /* Today */
 .today-page .page-head{margin-bottom:14px}
-.week-card{display:flex;flex-direction:column;gap:12px;margin-bottom:14px}
-.week{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:6px;text-align:center}
-.wday{display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;color:var(--muted)}
-.wday .now{font-weight:800;color:var(--brand-deep)}
-.wday i{width:34px;height:34px;border-radius:50%;display:block;box-sizing:border-box}
-.wday i.none{background:var(--surface-2);border:1.5px dashed color-mix(in srgb,var(--brand) 35%,var(--line))}
-.wday i.s1{background:var(--sev-1)}.wday i.s2{background:var(--sev-2)}.wday i.s3{background:var(--sev-3)}.wday i.s4{background:var(--sev-4)}.wday i.s5{background:var(--sev-5)}
-.wday i.p{background:var(--rose)}
-.wday i.today{outline:2.5px solid var(--brand);outline-offset:2px}
-.plan-card,.insight{margin-bottom:14px}
-.insight{background:var(--brand-soft);border-color:transparent}
-.insight-kicker{font-size:13px;font-weight:700;color:var(--brand-deep)}
-.insight-text{font-size:16px}
-.tiles{gap:10px}
-.tile-link{display:flex;flex-direction:column;gap:4px;color:var(--ink);text-decoration:none;padding:16px}
-.tile-big{font:700 21px 'Bricolage Grotesque',sans-serif}
-.tile-go{font-size:13px;font-weight:700;color:var(--brand-deep)}
-@media (max-width:760px){.grid.two.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.plan-card{margin-bottom:14px}
 .check{border-color:var(--brand)}
 .check.on{background:var(--sage);border-color:var(--sage);color:#fff}
 /* Quick check-in sheet */
@@ -643,7 +624,6 @@ button.msg{font:inherit;text-align:left;border:0;cursor:pointer}
 .forming-seats{display:flex;justify-content:center;gap:8px;margin-bottom:6px}
 .forming-seats i{width:14px;height:14px;border-radius:50%;border:2px dashed color-mix(in srgb,var(--brand) 45%,var(--line))}
 .forming-seats i.on{border:0;background:var(--brand)}
-button.tile-link{border:0;text-align:left;font:inherit;cursor:pointer;width:100%}
 .ob-values{display:flex;flex-wrap:wrap;justify-content:center;gap:6px;margin:2px 0 12px}
 .ob-values span{display:inline-flex;align-items:center;gap:5px;background:var(--surface-2);border-radius:999px;padding:6px 11px;font-size:13.5px;font-weight:600;color:var(--ink)}
 /* "Other day" in the check-in: looks like a segment, opens the phone's date picker */
@@ -651,3 +631,64 @@ button.tile-link{border:0;text-align:left;font:inherit;cursor:pointer;width:100%
 .seg-date.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 4px #0000001a}
 .seg-date input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;font-size:16px}
 .ci-foot .btn.primary{white-space:nowrap;padding-left:26px;padding-right:26px}
+
+/* ---------- Today dashboard: highlights, month, pinned, this week's idea, next visit ---------- */
+.today-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}
+.today-head .title{margin-bottom:0}
+.head-check{flex:0 0 auto;margin-top:2px;white-space:nowrap}
+.sec-head{display:flex;align-items:baseline;justify-content:space-between;margin:24px 2px 9px}
+.sec-head.first{margin-top:6px}
+.sec-title{font:700 20px 'Bricolage Grotesque',-apple-system,sans-serif;margin:0;letter-spacing:-.2px}
+.sec-link{border:0;background:none;padding:4px 0;font:700 14px Figtree,sans-serif;color:var(--brand-deep);cursor:pointer}
+.today-page .card+.card{margin-top:10px}
+.hl{padding:15px 16px}
+.hl-label{display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;color:var(--muted)}
+.hl-ico{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;flex:0 0 auto}
+.hl-ico.trend{color:var(--brand)}.hl-ico.link{color:var(--brand-deep)}.hl-ico.sun{color:var(--gold)}.hl-ico.drop{color:var(--rose)}
+.hl-text{font:650 17px/1.3 Figtree,sans-serif;margin-top:6px;color:var(--ink)}
+.hl-sub{font-size:13.5px;color:var(--muted);margin-top:3px;line-height:1.4}
+.hl-bars{display:grid;grid-template-columns:repeat(14,minmax(0,1fr));gap:4px;align-items:end;height:44px;margin-top:12px}
+.hl-bars i{display:block;border-radius:4px;background:var(--sev-3)}
+.hl-bars i.z{background:var(--surface-2)}
+.hl-bars i.now{outline:2px solid var(--brand);outline-offset:1px}
+.hl-axis{display:flex;justify-content:space-between;margin-top:5px;font-size:11.5px}
+.hl-empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+.hl-empty .hl-text{margin:0}
+.hl-steps{display:flex;align-items:center;gap:6px}
+.hl-steps i{width:28px;height:6px;border-radius:3px;background:var(--surface-2)}
+.hl-steps i.on{background:var(--brand)}
+.hl-steps span{margin-left:4px}
+.month-card{padding:12px 12px 12px}
+.mgrid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:5px;text-align:center}
+.mdow{font-size:11.5px;font-weight:700;color:var(--faint);padding-bottom:2px}
+.mday{aspect-ratio:1;max-height:44px;width:100%;display:grid;place-items:center;border:0;border-radius:50%;background:none;font:600 14px Figtree,sans-serif;color:var(--ink);position:relative;padding:0;cursor:pointer}
+.mday.blank{cursor:default}
+.mday.f{color:var(--faint);opacity:.55;cursor:default}
+.mday.s1{background:var(--sev-1)}.mday.s2{background:var(--sev-2)}.mday.s3{background:var(--sev-3)}
+.mday.s4{background:var(--sev-4);color:var(--on-brand)}.mday.s5{background:var(--sev-5);color:var(--on-brand)}
+.mday.ck::after{content:"";position:absolute;bottom:12%;left:50%;width:4px;height:4px;margin-left:-2px;border-radius:50%;background:var(--brand)}
+.mday.p{box-shadow:inset 0 0 0 2.5px var(--rose)}
+.mday.t{outline:2px solid var(--brand);outline-offset:2px;font-weight:800}
+.mlegend{display:flex;gap:16px;margin:10px 4px 0;font-size:12px}
+.mlegend span{display:inline-flex;align-items:center;gap:6px}
+.mlegend i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.lg-sev{background:var(--sev-4)}.lg-p{box-shadow:inset 0 0 0 2px var(--rose)}
+.pin-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.pin-grid .card+.card{margin-top:0}
+.pin{padding:14px 15px}
+.pin:only-child{grid-column:1/-1}
+.pin-label{font-size:13.5px;font-weight:700;color:var(--muted)}
+.pin-big{font:700 26px 'Bricolage Grotesque',sans-serif;margin-top:4px;color:var(--ink);line-height:1.1}
+.pin-big small{font:600 12.5px Figtree,sans-serif;color:var(--muted);margin-left:4px}
+.pin-sub{font-size:13px;color:var(--muted);margin-top:3px}
+.pin-sub.good{color:var(--sage);font-weight:600}
+.tip-card{background:var(--brand-soft);border-color:transparent}
+.tip-title{font-size:13.5px;font-weight:700;color:var(--brand-deep)}
+.tip-text{margin:6px 0 0;font-size:16px;line-height:1.45;color:var(--ink)}
+.tip-foot{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:10px;font-size:12.5px}
+.tip-foot .msg-src svg{width:13px;height:13px;flex:0 0 auto;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;margin-top:1px}
+.tip-foot .sec-link{font-size:13px;flex:0 0 auto}
+.visit-row{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--ink);text-decoration:none;margin-top:24px}
+.today-page .visit-row{margin-top:24px}
+.visit-when{font:650 17px Figtree,sans-serif;margin-top:4px}
+.chev{font-size:24px;color:var(--faint);line-height:1}

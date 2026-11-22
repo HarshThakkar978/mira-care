@@ -122,7 +122,7 @@
   // ---------- Routing ----------
   const ROUTES = ['chat', 'today', 'community', 'cycle', 'visit', 'me', 'report'];
   let route = ROUTES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'chat';
-  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, insightLoading: false, insightTried: false, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, pushHere: 'unknown', pushEndpoint: '', googleId: '', signingIn: false, confirmSignOut: false };
+  const ui = { multi: [], sending: false, pending: '', live: '', failed: '', older: [], loadingOlder: false, seen: null, loaded: false, month: today().slice(0, 7), selDay: today(), visitTab: 'before', drafting: false, confirmReset: false, showSymForm: false, sheet: null, log: null, ob: 0, tip: null, tipLoading: false, tipTried: false, pinSel: null, cm: freshCm(), unread: 0, calUrl: '', calLoading: false, calTried: false, pushHere: 'unknown', pushEndpoint: '', googleId: '', signingIn: false, confirmSignOut: false };
   function freshCm() { return { tab: 'group', group: null, messages: [], reactions: {}, reactFor: '', loaded: false, fetching: false, posting: '', ideas: null, ideasLoading: false, join: null, focusEdit: null, confirmLeave: false }; }
   const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
   // Screen changes cross-fade where the browser supports View Transitions.
@@ -144,7 +144,7 @@
     if (route === 'chat') { afterChatRender(); } else view.scrollTop = 0;
     if (route === 'community') scrollThread();
     document.querySelectorAll('textarea.ag-text, textarea[data-edit]').forEach(autoGrow);
-    if (route === 'today') maybeLoadInsight();
+    if (route === 'today') maybeLoadTip();
     renderSheet();
     syncPoll(); updateBadge(); renderGoogleButtons();
     if (coach && coach.screen !== route) { coach = null; drawCoach(); }
@@ -333,41 +333,98 @@
   }
   function greeting() { const h = new Date().getHours(); return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening'; }
 
-  function renderToday() {
-    const name = user.profile.name;
-    const ls = lastStart(), since = ls ? diffDays(ls.date, today()) + 1 : null;
+  // Today: highlights from their own entries, their month, pinned numbers, one sourced idea and the next visit.
+  // The numbers come from dashboard.js (CuraDash); only "For you this week" asks Cura.
+  const DASH_ICONS = {
+    trend: '<path d="M3 17l5-5 4 4 8-8"/><path d="M15 8h5v5"/>',
+    link: '<circle cx="8" cy="12" r="5"/><circle cx="16" cy="12" r="5"/>',
+    sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    drop: '<path d="M12 3s6 6.5 6 11a6 6 0 0 1-12 0c0-4.5 6-11 6-11z"/>'
+  };
+  const dashIcon = k => `<svg class="hl-ico ${k}" viewBox="0 0 24 24" aria-hidden="true">${DASH_ICONS[k] || ''}</svg>`;
+  function highlightHtml(h) {
+    const bars = h.bars ? `<div class="hl-bars" aria-hidden="true">${h.bars.map((b, i) => `<i class="${b.v ? '' : 'z'}${i === 13 ? ' now' : ''}" style="height:${b.v ? Math.max(18, b.v * 10) : 8}%"></i>`).join('')}</div><div class="hl-axis small muted" aria-hidden="true"><span>2 weeks ago</span><span>Today</span></div>` : '';
+    return `<div class="card hl hl-${h.kind}"><div class="hl-label">${dashIcon(h.icon)}${esc(h.label)}</div><div class="hl-text">${esc(h.text)}</div><div class="hl-sub">${esc(h.sub)}</div>${bars}</div>`;
+  }
+  function highlightsHtml() {
+    const list = CuraDash.highlights(user, today());
+    if (list.length) return list.map(highlightHtml).join('');
+    const p = CuraDash.progress(user, today());
+    return `<div class="card hl hl-empty"><div class="hl-text">Your first patterns show up after ${plural(p.need, 'day')} of check-ins</div>
+      <div class="hl-steps" role="img" aria-label="${p.have} of ${p.need} days">${Array.from({ length: p.need }, (_, i) => `<i class="${i < p.have ? 'on' : ''}"></i>`).join('')}<span class="small muted">${p.have} of ${p.need}</span></div></div>`;
+  }
+  function monthHtml() {
+    const month = today().slice(0, 7), cells = CuraDash.monthCells(user, month, today());
+    const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'].map(d => `<span class="mdow" aria-hidden="true">${d}</span>`).join('');
+    const days = cells.map(c => {
+      if (!c) return '<span class="mday blank" aria-hidden="true"></span>';
+      const cls = ['mday', c.sev ? 's' + c.sev : '', c.period ? 'p' : '', c.today ? 't' : '', c.future ? 'f' : '', c.logged && !c.sev ? 'ck' : ''].filter(Boolean).join(' ');
+      const label = `${fmtLong(c.date)}${c.period ? ', period started' : ''}${c.sev ? ', symptoms' : c.logged ? ', checked in' : ''}`;
+      return c.future ? `<span class="${cls}" aria-hidden="true">${c.n}</span>` : `<button class="${cls}" data-dash-day="${c.date}" aria-label="${esc(label)}">${c.n}</button>`;
+    }).join('');
+    return `<div class="sec-head"><h2 class="sec-title">${esc(fmt(month + '-01', { month: 'long' }))}</h2><button class="sec-link" data-route="cycle">Calendar ›</button></div>
+      <div class="card month-card"><div class="mgrid">${dows}${days}</div>
+      <div class="mlegend small muted"><span><i class="lg-sev"></i>Stronger symptoms</span><span><i class="lg-p"></i>Period started</span></div></div>`;
+  }
+  function pinnedHtml() {
+    if (!CuraDash.progress(user, today()).have) return ''; // nothing logged in 2 weeks: nothing to show yet
+    const tiles = CuraDash.pinnedTiles(user, today());
+    if (!tiles.length) return '';
+    return `<div class="sec-head"><h2 class="sec-title">Pinned</h2><button class="sec-link" data-action="pins-edit">Edit</button></div>
+      <div class="pin-grid">${tiles.map(t => `<div class="card pin"><div class="pin-label">${esc(t.label)}</div><div class="pin-big">${esc(t.big)}${t.unit ? `<small>${esc(t.unit)}</small>` : ''}</div><div class="pin-sub ${t.tone}">${esc(t.sub)}</div></div>`).join('')}</div>`;
+  }
+  function tipHtml() {
+    if (ui.tipLoading) return `<div class="sec-head"><h2 class="sec-title">For you this week</h2></div><div class="card tip-card"><div class="skel" style="width:55%"></div><div class="skel" style="width:92%"></div><div class="skel" style="width:70%"></div></div>`;
+    const t = ui.tip;
+    if (!t) return '';
+    return `<div class="sec-head"><h2 class="sec-title">For you this week</h2></div>
+      <div class="card tip-card"><div class="tip-title">${esc(t.title)}</div><p class="tip-text">${esc(t.text)}</p>
+      <div class="tip-foot"><a class="msg-src" href="${esc(t.source.url)}" target="_blank" rel="noopener">${BOOK_SVG}${esc(t.source.site)} · ${esc(t.source.title)}</a><button class="sec-link" data-action="tip-ask">Ask Cura</button></div></div>`;
+  }
+  function visitHtml() {
     const appt = user.profile.appointmentDate, apptIn = appt ? diffDays(today(), appt) : null;
     const hasAgenda = user.agenda.summary || user.agenda.topics.length;
-    // This week: one circle per day, darker for stronger symptoms, rose when a period started, dashed if nothing logged.
-    const starts = new Set(user.cycleStarts.map(c => c.date));
-    const days = Array.from({ length: 7 }, (_, i) => {
-      const d = addDays(today(), i - 6);
-      const sev = Math.max(0, ...user.symptoms.filter(x => x.date === d).map(x => Number(x.severity) || 3));
-      const any = sev || user.checkins.some(c => c.date === d);
-      const cls = starts.has(d) ? 'p' : sev ? 's' + Math.min(5, Math.ceil(sev / 2)) : any ? 's1' : 'none';
-      const label = `${fmtLong(d)}: ${starts.has(d) ? 'period started' : sev ? `symptoms up to ${sev}/10` : any ? 'checked in' : 'nothing logged'}`;
-      return { d, cls, label, letter: parse(d).toLocaleDateString(undefined, { weekday: 'narrow' }), today: d === today() };
-    });
-    const showedUp = days.filter(x => x.cls !== 'none').length;
+    const when = !appt ? 'Not set yet' : apptIn > 0 ? `${fmtLong(appt)} · in ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmtLong(appt);
+    const sub = !appt ? 'Add a date and Cura helps you prepare' : hasAgenda ? 'Your agenda and summary are ready' : `${plural(user.preNotes.length, 'note')} so far · prepare your agenda`;
+    return `<a class="card visit-row" href="#visit" data-route="visit"><div><div class="pin-label">Next visit</div><div class="visit-when">${esc(when)}${user.profile.clinician ? ' · ' + esc(user.profile.clinician) : ''}</div><div class="hl-sub">${esc(sub)}</div></div><span class="chev" aria-hidden="true">›</span></a>`;
+  }
+  function renderToday() {
+    const name = user.profile.name;
     return `<div class="page today-page">
-      <div class="page-head"><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'short', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
+      <div class="page-head today-head"><div><div class="eyebrow">${esc(fmt(today(), { weekday: 'long', month: 'short', day: 'numeric' }))}</div><h1 class="title">${greeting()}${name ? ', ' + esc(name) : ''}</h1></div>
+        <button class="btn small soft head-check" data-action="quick-log">+ Check in</button></div>
       ${circleInviteCard()}
       ${circleProgressCard()}
       ${storyCard()}
-      <div class="card week-card">
-        <div class="row"><h2 class="card-title">This week</h2>${showedUp ? `<span class="pill peach">${plural(showedUp, 'check-in')} 🌟</span>` : `<button class="btn small soft" data-action="quick-log">Check in</button>`}</div>
-        <div class="week" role="list">${days.map(x => `<div class="wday" role="listitem" aria-label="${esc(x.label)}"><span class="${x.today ? 'now' : ''}">${x.letter}</span><i class="${x.cls}${x.today ? ' today' : ''}"></i></div>`).join('')}</div>
-        <p class="small muted" style="margin:0">Deeper color = stronger symptoms · rose = period started</p>
-      </div>
+      <div class="sec-head first"><h2 class="sec-title">Highlights</h2></div>
+      ${highlightsHtml()}
+      ${monthHtml()}
+      ${pinnedHtml()}
+      ${tipHtml()}
       ${planCard()}
-      ${insightCard()}
-      <div class="grid two tiles">
-        <a class="card tile-link" href="#visit" data-route="visit"><span class="small muted">Next visit</span><span class="tile-big">${appt ? (apptIn > 0 ? `In ${plural(apptIn, 'day')}` : apptIn === 0 ? 'Today' : fmt(appt)) : 'Not set'}</span><span class="tile-go">${appt ? (hasAgenda ? 'Agenda ready ›' : 'Prepare ›') : 'Add a date ›'}</span></a>
-        ${since ? `<a class="card tile-link" href="#cycle" data-route="cycle"><span class="small muted">Cycle</span><span class="tile-big">Day ${since}</span><span class="tile-go">Calendar ›</span></a>`
-          : `<button class="card tile-link" data-action="quick-log" data-period="1"><span class="small muted">Cycle</span><span class="tile-big">—</span><span class="tile-go">Log a period ›</span></button>`}
-      </div>
+      ${visitHtml()}
       <p class="note">Cura organizes your own notes. It doesn't diagnose or replace care from a clinician.</p>
     </div>`;
+  }
+  // Pick what's pinned on Today (up to 2).
+  function pinsSheetHtml() {
+    const sel = ui.pinSel || [];
+    return `<div class="sheet-head"><h2 id="sheetTitle" class="sheet-title">Pin to Today</h2><button class="icon-btn soft" data-action="sheet-close" aria-label="Close">×</button></div>
+      <p class="card-sub">Pick up to 2 to see each week.</p>
+      <div class="chipset">${CuraDash.pinChoices(user, today()).map(c => `<button class="chip ${sel.includes(c.key) ? 'on' : ''}" data-pin="${esc(c.key)}" aria-pressed="${sel.includes(c.key)}">${esc(c.label)}</button>`).join('')}</div>
+      <button class="btn primary" data-action="pins-save" style="width:100%;margin-top:18px" ${sel.length ? '' : 'disabled'}>Save</button>`;
+  }
+  // Asks Cura for this week's idea once per app visit (the server keeps it for the week).
+  function maybeLoadTip() {
+    if (ui.tipTried || !navigator.onLine) return;
+    const since = addDays(today(), -13);
+    if (user.symptoms.filter(x => x.date >= since).length + user.checkins.filter(x => x.date >= since).length < 3) return;
+    ui.tipTried = true; ui.tipLoading = true;
+    if (route === 'today') renderInPlace();
+    api('week-tip', {}, { keepUser: true })
+      .then(d => { ui.tip = d.tip && d.tip.source ? d.tip : null; })
+      .catch(() => {})
+      .finally(() => { ui.tipLoading = false; if (route === 'today') renderInPlace(); });
   }
   // The 30-day strip and most frequent symptoms, shown on the Cycle screen.
   function trendsHtml() {
@@ -389,25 +446,6 @@
       <div class="card"><h2 class="card-title">Most frequent symptoms</h2><p class="card-sub">Last 30 days · days noticed and average intensity</p>
         ${top.length ? top.map(t => `<div class="bar-row"><span>${esc(cap(t.name))}</span><span class="bar"><i style="width:${Math.round(t.days.size / maxDays * 100)}%"></i></span><span class="val">${plural(t.days.size, 'day')}${t.sevN ? ' · ' + avgText(t.sevSum, t.sevN) : ''}</span></div>`).join('') : `<div class="empty"><strong>No symptoms yet</strong>Tell Cura things like “hot flashes last night, a 6”.</div>`}
       </div>`;
-  }
-  function insightCard() {
-    const text = ui.insight || (user.insight && user.insight.text);
-    if (!text && !ui.insightLoading) return '';
-    return `<div class="card insight"><div class="insight-kicker">Cura noticed</div>
-      ${text ? `<p class="insight-text">${esc(text)}</p>` : '<div class="skel" style="width:92%"></div><div class="skel" style="width:70%"></div>'}</div>`;
-  }
-  // Asks Cura for a short read of the last 7 days once per visit to Today (the server caches it).
-  function maybeLoadInsight() {
-    if (ui.insightTried) return;
-    const since = addDays(today(), -6);
-    const recent = user.symptoms.filter(x => x.date >= since).length + user.checkins.filter(x => x.date >= since).length + user.cycleStarts.filter(x => x.date >= since).length;
-    if (recent < 2) return;
-    ui.insightTried = true; ui.insightLoading = true;
-    const card = $('.insight'); if (!card && route === 'today') render();
-    api('insight', {}, { keepUser: true })
-      .then(d => { ui.insight = d.insight || ''; })
-      .catch(() => {})
-      .finally(() => { ui.insightLoading = false; if (route === 'today') render(); });
   }
   function recentList() {
     const items = [
@@ -1038,7 +1076,7 @@
     try {
       const d = await api('google-signin', { credential: resp.credential }, { keepUser: true });
       if (d.deviceId && d.deviceId !== deviceId) { deviceId = d.deviceId; store.set(ID_KEY, deviceId); }
-      user = emptyUser(); ui.older = []; ui.seen = null; ui.cm = freshCm(); ui.calUrl = ''; ui.insight = ''; ui.insightTried = false;
+      user = emptyUser(); ui.older = []; ui.seen = null; ui.cm = freshCm(); ui.calUrl = ''; ui.tip = null; ui.tipTried = false;
       setUser(d.user);
       store.set(ACCT_KEY, '1');
       const first = user.profile.name ? `, ${user.profile.name}` : '';
@@ -1056,7 +1094,7 @@
       { sel: '.head-plus', text: () => 'Tap + for a quick check-in: your mood, symptoms and period in a few taps.' },
       { sel: '#composer', text: () => "Or just text Cura in your own words. She'll save it for you." }
     ],
-    today: [{ sel: '.week-card', text: () => 'Your week at a glance: darker circles mean stronger symptoms. Your plan and next visit are below.' }],
+    today: [{ sel: '.month-card', text: () => 'Your month at a glance: deeper color means stronger symptoms. Tap a day to see or add to it.' }],
     community: [{ sel: '.lock-card, .cm-tabs', text: () => (joined() ? "Share what's helped you, and tap anyone's message to react. Tips you'll like show up in Ideas for you." : 'After 3 check-ins your Circle opens: a small group of people with symptoms like yours.') }]
   };
   let coach = null; // { screen, i } while a tip is showing
@@ -1197,7 +1235,7 @@
       if (syms.length) await tool('log_symptoms', { date: L.date, symptoms: syms.map(name => ({ name: name.toLowerCase(), severity: L.sev })) });
       if (L.period) await tool('log_period_start', { date: L.date });
       const parts = [L.mood && `feeling ${L.mood.toLowerCase()}`, syms.length && `${syms.join(', ').toLowerCase()} (${L.sev}/10)`, L.period && 'period start'].filter(Boolean);
-      ui.sheet = null; ui.insightTried = false; ui.insight = '';
+      ui.sheet = null; ui.tipTried = false; ui.tip = null;
       toast(`Logged ${parts.join(' · ')} ✓`);
       render();
       setTimeout(maybeCircleReady, 700); // their third check-in may have just opened the Circle
@@ -1309,7 +1347,7 @@
     if (!open) { root.innerHTML = ''; if (wasOpenBefore) refreshTopBar(); return; }
     const wasOpen = !!root.querySelector('.sheet'), top = wasOpen ? root.querySelector('.sheet').scrollTop : 0;
     root.innerHTML = `<div class="sheet-backdrop" data-action="sheet-close"></div>
-      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml, moved: movedSheetHtml, 'circle-ready': circleReadyHtml }[ui.sheet] || meSheetHtml)()}</div>`;
+      <div class="sheet ${ui.sheet === 'welcome' ? 'welcome' : ''} ${wasOpen ? 'still' : ''}" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="grabber" aria-hidden="true"></div>${({ log: quickLogHtml, welcome: welcomeHtml, cm: cmSettingsHtml, cal: calSheetHtml, account: accountSheetHtml, install: installSheetHtml, story: storyInviteHtml, moved: movedSheetHtml, 'circle-ready': circleReadyHtml, pins: pinsSheetHtml }[ui.sheet] || meSheetHtml)()}</div>`;
     if (wasOpen) root.querySelector('.sheet').scrollTop = top; // a redraw keeps your place in the sheet
     else root.querySelector('.sheet button, .sheet input')?.focus({ preventScroll: true });
     renderGoogleButtons();
@@ -1563,6 +1601,10 @@
     if (e.target.closest('[data-qr-done]') && ui.multi.length) { const t = ui.multi.join(', '); ui.multi = []; sendMessage(t); return; }
     const day = e.target.closest('[data-day]');
     if (day) { ui.selDay = day.dataset.day; ui.showSymForm = false; render(); return; }
+    const dd = e.target.closest('[data-dash-day]');
+    if (dd) { ui.selDay = dd.dataset.dashDay; ui.month = ui.selDay.slice(0, 7); ui.showSymForm = false; go('cycle'); return; }
+    const pn = e.target.closest('[data-pin]');
+    if (pn && ui.sheet === 'pins') { const k = pn.dataset.pin, S = ui.pinSel, i = S.indexOf(k); if (i >= 0) S.splice(i, 1); else if (S.length < 2) S.push(k); else toast('Pick up to 2'); renderSheet(); return; }
     const me = e.target.closest('[data-me]');
     if (me) { if (me.dataset.me === 'account') store.set(ACCT_KEY, '1'); ui.sheet = 'me-' + me.dataset.me; if (me.dataset.me === 'account') ui.sheet = 'account'; renderSheet(); return; }
     const tp = e.target.closest('[data-theme-pick]');
@@ -1720,6 +1762,12 @@
     }
     else if (act === 'plan-outcome') guarded(() => api('plan-outcome', { item: a.dataset.id, how: a.dataset.how }), a.dataset.how === 'not_much' ? "Thanks for telling Cura. It's off your plan now." : 'Great! It stays in your plan as a daily habit 🌿');
     else if (act === 'plan-remove') guarded(() => api('plan-remove', { item: a.dataset.id }), 'Removed from your plan');
+    else if (act === 'tip-ask' && ui.tip) { go('chat'); sendMessage(`Tell me more about this idea: "${ui.tip.text}"`); }
+    else if (act === 'pins-edit') { ui.pinSel = CuraDash.pins(user, today()); ui.sheet = 'pins'; renderSheet(); }
+    else if (act === 'pins-save') {
+      const pinned = [...ui.pinSel]; user.profile.pinned = pinned; closeSheet(); render();
+      try { await api('pin', { pinned }); render(); } catch (err) { toast(err.message); }
+    }
     else if (act === 'cal-open') { ui.calTried = false; ui.sheet = 'cal'; renderSheet(); ensureCalUrl(); }
     else if (act === 'cal-copy') copy(ui.calUrl, 'Calendar link copied');
     else if (act === 'account-later') { store.set(ACCT_KEY, '1'); closeSheet(); }

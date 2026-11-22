@@ -50,11 +50,12 @@ replies and what she saved, then erases the test users.
 
 ## Where things are
 
-- `index.html`, `app.js`, `styles.css`, `sw.js`: the whole app (no build step). Bump `CACHE` in `sw.js` when
+- `index.html`, `app.js`, `styles.css`, `sw.js`: the whole app (no build step). `dashboard.js`: the Today screen's
+  numbers (highlights, month view, pinned tiles), plain functions tested in `dev/dashboard.test.mjs`. Bump `CACHE` in `sw.js` when
   you change these so phones pick up the new version.
 - `api/app.js`: the app's API. `api/_lib/mira.js`: Cura's prompt, tools and chat loop. `api/_lib/respond.js`:
   runs a chat turn. `api/_lib/story.js`: "your story" questions (with "why I ask" sources) and the timing A/B
-  test. `api/_lib/community*.js`: the Circle. `api/_lib/voice.js`: voice → text (OpenAI). `api/admin.js` +
+  test. `api/_lib/community*.js`: the Circle. `api/_lib/voice.js`: voice → text (OpenAI). `api/_lib/weektip.js`: "For you this week" on Today. `api/admin.js` +
   `admin.html`/`admin.js`: the admin page.
 - Model: `claude-sonnet-5-5` (set in `api/_lib/respond.js`, override with `MIRA_MODEL`). Data: Upstash Redis.
 - Old addresses (mira-care.vercel.app, curadaily.vercel.app) forward to curadaily.com with the person's data

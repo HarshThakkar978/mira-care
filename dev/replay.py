@@ -53,8 +53,16 @@ SCENARIOS = {
                   "Hot flashes, Trouble sleeping, Brain fog", "Supplements, Exercise", "magnesium helped my sleep a bit, exercise not really",
                   "Thyroid condition", "I'd rather not say", "45–49", "Sleeping better, Talking to my doctor"],
     # Questions about the app itself: Cura must know her own features (see APP_GUIDE in api/_lib/mira.js).
+    # "For you this week" on Today: one personal, sourced idea (or none). ("tip",) asks for it.
+    "tip_sleep": [*[("x", "log_symptoms", {"symptoms": [{"name": "hot flashes", "severity": sv}], "days_ago": n}) for n, sv in [(1, 6), (2, 7), (4, 6), (6, 7), (8, 7), (10, 8)]],
+                  *[("x", "log_symptoms", {"symptoms": [{"name": "poor sleep", "severity": sv}], "days_ago": n}) for n, sv in [(1, 6), (2, 7), (4, 5), (8, 7)]],
+                  ("x", "log_feeling", {"feeling": "tired", "days_ago": 1}), ("tip",)],
+    "tip_mood": [*[("x", "log_feeling", {"feeling": f, "days_ago": n}) for n, f in [(0, "low"), (1, "anxious"), (3, "rough"), (5, "low"), (9, "okay")]],
+                 *[("x", "log_symptoms", {"symptoms": [{"name": "headache", "severity": 4}], "days_ago": n}) for n in (1, 3)], ("tip",)],
+    "tip_fine": [*[("x", "log_feeling", {"feeling": f, "days_ago": n}) for n, f in [(0, "good"), (1, "great"), (2, "good"), (4, "okay")]], ("tip",)],
     "appqs": ["can you remind me every day to check in?", "how do I show all this to my doctor?", "what's the circle?",
-              "can I talk instead of typing?", "how do I delete everything?", "can I import my data from Flo?"],
+              "can I talk instead of typing?", "how do I delete everything?", "can I import my data from Flo?",
+              "how do I change what's pinned on my Today page?"],
     # Someone who's doing fine (like an early user): short, warm replies, no piling on.
     "allgood": [("setup", "save_profile", {"name": "Judy"}), "Feeling good today", "Yes, I slept well.",
                 "Good at the moment.", "I'm attending a wedding this weekend.", "Nothing to report at this time.", "thanks"],
@@ -84,7 +92,12 @@ for name, msgs in SCENARIOS.items():
     dev = f"claude-replay-{name}-{uuid.uuid4().hex[:8]}"
     print(f"\n===== {name} =====")
     try:
+        d = None
         for m in msgs:
+            if m == ("tip",):
+                t = call(dev, "week-tip").get("tip")
+                print("TIP:", f"[{t['title']}] {t['text']}  ({t['source']['site']} · {t['source']['title']})" if t else "none")
+                d = call(dev, "load"); continue
             if isinstance(m, tuple) and m[0] == "action":
                 d = call(dev, m[1]); t = d['user']['transcript'][-1]; print(f"[{m[1]}] CURA: {t['text']}" + (f"\nBUTTONS: {t['ui']}" if t.get('ui') else "") + "\n"); continue
             if isinstance(m, tuple):
