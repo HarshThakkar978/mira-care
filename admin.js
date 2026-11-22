@@ -1,6 +1,10 @@
 (() => {
   // Cura admin: view users, their entries and chats, and delete test users. Password is checked by /api/admin.
-  if (['mira-care.vercel.app', 'curadaily.vercel.app'].includes(location.hostname)) { location.replace('https://curadaily.com/admin.html'); return; }
+  // Old addresses move to curadaily.com, but only once it's confirmed to be up.
+  if (['mira-care.vercel.app', 'curadaily.vercel.app'].includes(location.hostname)) {
+    fetch('https://curadaily.com/api/manifest?ping=' + Date.now(), { cache: 'no-store' }).then(r => r.json())
+      .then(m => { if (m && m.name === 'Cura') location.replace('https://curadaily.com/admin.html'); }).catch(() => {});
+  }
   const PW_KEY = 'mira-admin-pw';
   const $ = s => document.querySelector(s);
   const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

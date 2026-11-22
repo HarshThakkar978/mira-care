@@ -24,6 +24,7 @@ export function GET(request) {
   if (ID_RE.test(d)) { start.set('device', d); start.set('from', 'home'); }
   if (THEMES.includes(t)) start.set('theme', t);
   return new Response(JSON.stringify({ ...base, start_url: `/?${start}#chat` }), {
-    headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' }
+    // Readable from the old addresses too: they check this before forwarding anyone to curadaily.com.
+    headers: { 'Content-Type': 'application/manifest+json', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex', 'Access-Control-Allow-Origin': '*' }
   });
 }

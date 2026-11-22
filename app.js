@@ -19,7 +19,17 @@
     for (const [param, key] of Object.entries(carry)) { const v = store.get(key); if (v && !q.get(param)) q.set(param, v); }
     return `https://${NEW_HOST}${location.pathname}?${q}${location.hash}`;
   };
-  if (onOldHost && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) { location.replace(moveLink()); return; }
+  // Forward only once curadaily.com is confirmed to be really serving Cura. If the domain is ever down (it was
+  // suspended once over an unverified email), people stay here, where Cura keeps working.
+  const newHostWorks = () => {
+    const stop = new AbortController(); setTimeout(() => stop.abort(), 3000);
+    return fetch(`https://${NEW_HOST}/api/manifest?ping=${Date.now()}`, { cache: 'no-store', signal: stop.signal })
+      .then(r => r.json()).then(m => m && m.name === 'Cura').catch(() => false);
+  };
+  if (onOldHost && !(matchMedia('(display-mode: standalone)').matches || navigator.standalone === true)) {
+    document.documentElement.style.visibility = 'hidden'; // no flash of this page if we're about to move
+    newHostWorks().then(ok => { if (ok) location.replace(moveLink()); else document.documentElement.style.visibility = ''; });
+  }
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
   // First open of a Home Screen app added from Safari: trade the one-time code in the address for this person's
   // device code (see the "handoff" actions in api/app.js), so they don't start over as a stranger.
@@ -1859,7 +1869,7 @@
   render();
   if (arrived.get('moved')) setTimeout(() => toast(`Cura has a new home: ${NEW_HOST} 💚`), 600);
   // Home Screen app on an old address: once, explain how to switch (it keeps working until they do).
-  if (onOldHost && !store.get('mira-moved-note')) setTimeout(() => { if (!ui.sheet) { store.set('mira-moved-note', '1'); ui.sheet = 'moved'; renderSheet(); } }, 1500);
+  if (onOldHost && standalone && !store.get('mira-moved-note')) newHostWorks().then(ok => { if (ok) setTimeout(() => { if (!ui.sheet) { store.set('mira-moved-note', '1'); ui.sheet = 'moved'; renderSheet(); } }, 1500); });
   (async () => {
     try {
       const d = await api('load');
