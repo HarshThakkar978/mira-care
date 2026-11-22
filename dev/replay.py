@@ -58,6 +58,10 @@ SCENARIOS = {
     # Someone who's doing fine (like an early user): short, warm replies, no piling on.
     "allgood": [("setup", "save_profile", {"name": "Judy"}), "Feeling good today", "Yes, I slept well.",
                 "Good at the moment.", "I'm attending a wedding this weekend.", "Nothing to report at this time.", "thanks"],
+    # From user feedback: tips must be personal and sourced, never generic; no amplifying a bad day.
+    "feedback": [("setup", "log_symptoms", {"days_ago": 3, "symptoms": [{"name": "hot flashes", "severity": 7, "notes": "evening"}, {"name": "poor sleep", "severity": 6}]}),
+                 ("setup", "log_symptoms", {"days_ago": 1, "symptoms": [{"name": "hot flashes", "severity": 6, "notes": "around 9pm"}, {"name": "poor sleep", "severity": 7}]}),
+                 "slept really badly again", "woke up around 3 and couldn't get back to sleep", "had a bad day today honestly", "any tips?"],
     # Tips should come with a trusted source link.
     # The conversation from the first phone test: name known, mood button, then sleep.
     "harsh": [("setup", "save_profile", {"name": "Harsh"}),

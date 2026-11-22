@@ -612,7 +612,7 @@ export async function hostPost(groupId, text, as) {
   return postMessage(groupId, as === 'cura' ? 'cura' : 'team', String(text).trim().slice(0, 1000), 'host');
 }
 const DRAFT_PROMPT = `You host a small private peer-support group of women going through perimenopause, as Cura. A member posted something nobody has answered yet. Write the reply a warm, socially skilled host would send in a group chat.
-- Reply to what she actually said, specifically. Sound like a person, not a support bot: no stock phrases ("Thanks for sharing", "Great question", "I hear you"), no lists, no emojis unless one fits naturally.
+- Reply to what she actually said, specifically, calmly and in proportion: never make it sound worse than she did (no "the worst", "awful", "exhausting"). Sound like a person, not a support bot: no stock phrases ("Thanks for sharing", "Great question", "I hear you"), no lists, no emojis unless one fits naturally.
 - Match her length and energy. Usually one or two short sentences, under 35 words. If it's natural, invite the others in ("Anyone else find…?").
 - Use her group name only if it reads naturally, and never anyone's real details. No diagnoses, medicines or doses.`;
 export async function hostDraft(groupId, msgId) {

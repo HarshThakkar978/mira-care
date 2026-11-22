@@ -171,7 +171,7 @@
     const picks = (user.community && user.community.focus || []).map(x => x.toLowerCase()).slice(0, 3);
     const list = picks.length <= 1 ? picks.join('') : `${picks.slice(0, -1).join(', ')} and ${picks[picks.length - 1]}`;
     return picks.length
-      ? `Hi${name}, I'm Cura 💜 ${list[0].toUpperCase() + list.slice(1)} can be so draining. Tell me how things have been, and I'll suggest what might help.`
+      ? `Hi${name}, I'm Cura 💜 Let's start with ${list}. Tell me how things have been, and I'll suggest what might help.`
       : `Hi${name}, I'm Cura 💜 Tell me how you feel, a symptom, or when your period starts. I'll keep track, suggest what might help, and get you ready for your doctor.`;
   }
   const checkedInToday = () => user.checkins.some(c => c.date === today()) || user.symptoms.some(s => s.date === today());
@@ -1216,7 +1216,7 @@
       hello: `<div class="ob-art"><img src="/icons/logo-256.png" alt="" class="ob-icon"></div>
         <h2 id="sheetTitle" class="ob-title">Perimenopause is a lot. Text it to Cura.</h2>
         <div class="ob-values"><span>📝 Track by just texting</span><span>💡 Tips that fit you</span><span>🩺 Ready for your doctor</span></div>
-        <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Ugh, third night this week. Want a quick tip for tonight?</div><div class="msg-meta"><span class="msg-saved">${CHECK_SVG}Saved: hot flashes 7/10</span></div></div>
+        <div class="ob-demo" aria-hidden="true"><div class="msg me tail">hot flashes again, like a 7 😩</div><div class="msg them tail">Third night this week, all after 10pm. Want an idea for tonight?</div><div class="msg-meta"><span class="msg-saved">${CHECK_SVG}Saved: hot flashes 7/10</span></div></div>
         ${ui.googleId ? `${accountBlock()}<p class="ob-hint">Already use Cura? Sign in to bring everything back.</p>` : ''}`,
       circle: `${circleArt()}
         <h2 id="sheetTitle" class="ob-title">Your Circle</h2>
