@@ -44,6 +44,7 @@ Rules:
 - Start from their own entries below. Name the pattern it responds to in a few words ("Since your hot flashes have mostly come with poor sleep…"), then the idea.
 - It must be something the chosen source page actually recommends. Sources (id: what the page covers):
 ${Object.entries(SOURCES).map(([id, x]) => `  ${id}: ${x.site}, ${x.about}`).join('\n')}
+- Keep to what the page says: no numbers (temperatures, counts, durations, doses) unless the page gives them. If unsure, describe it without numbers.
 - If no source covers an idea that fits them, return an empty tip with source_id "none". No tip is better than a generic one.
 - No generic advice a parent would give (cut screens, drink water, fresh air, a warm bath, herbal tea, get some rest) unless their entries point straight at it.
 - Don't repeat what's in already_trying, or anything their background says didn't help. Build on what helped.
